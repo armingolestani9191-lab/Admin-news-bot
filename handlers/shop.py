@@ -8,7 +8,7 @@ from states import set_state, get_state, clear_state
 from keyboards import plans_menu, pay_method_menu, card_pay_menu, home_inline_menu
 from subscription import (
     PLANS,
-    CARD_NUMBER,
+    get_card_number,
     ADMIN_IDS,
     load_payments,
     save_payments,
@@ -17,6 +17,7 @@ from subscription import (
 )
 from sender import send_message, send_photo, copy_message, inline_keyboard
 from handlers.home import home_components
+from admin_store import is_admin
 
 
 def back_only():
@@ -87,7 +88,7 @@ async def on_callback(callback: CallbackQuery):
         price = f"{plan.get('price', 0):,}".replace(",", "٬")
         await edit_message(
             callback,
-            f"💳 کارت به کارت\n\nمبلغ {price} تومن برای اشتراک {plan.get('title', '')} را به این کارت واریز کن:\n\n`{CARD_NUMBER}`\n\nبعد روی «واریز کردم» بزن و عکس رسید را بفرست.",
+            f"💳 کارت به کارت\n\nمبلغ {price} تومن برای اشتراک {plan.get('title', '')} را به این کارت واریز کن:\n\n`{get_card_number()}`\n\nبعد روی «واریز کردم» بزن و عکس رسید را بفرست.",
             card_pay_menu(),
         )
         return
@@ -113,7 +114,7 @@ async def on_callback(callback: CallbackQuery):
         return
 
     if data.startswith("adm_ok_"):
-        if callback.from_user.id not in ADMIN_IDS:
+        if not is_admin(callback.from_user.id):
             return
         req_id = data.replace("adm_ok_", "", 1)
         payments = load_payments()
@@ -139,7 +140,7 @@ async def on_callback(callback: CallbackQuery):
         return
 
     if data.startswith("adm_no_"):
-        if callback.from_user.id not in ADMIN_IDS:
+        if not is_admin(callback.from_user.id):
             return
         req_id = data.replace("adm_no_", "", 1)
         payments = load_payments()
@@ -157,7 +158,7 @@ async def on_callback(callback: CallbackQuery):
         return
 
     if data.startswith("adm_msg_"):
-        if callback.from_user.id not in ADMIN_IDS:
+        if not is_admin(callback.from_user.id):
             return
         req_id = data.replace("adm_msg_", "", 1)
         set_state(callback.from_user.id, "admin_msg", {"req_id": req_id})
@@ -189,7 +190,7 @@ async def on_message(message: Message):
             )
         return
 
-    if name == "admin_msg" and user_id in ADMIN_IDS:
+    if name == "admin_msg" and is_admin(user_id):
         req_id = (state.get("data") or {}).get("req_id")
         payments = load_payments()
         item = payments.get(req_id) or {}
