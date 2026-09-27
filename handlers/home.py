@@ -1,3 +1,5 @@
+import time
+
 from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from client import bot
@@ -20,6 +22,9 @@ from subscription import (
 from force_join import is_force_join_enabled, is_user_joined
 from force_join_keyboard import force_join_keyboard
 from admin_store import is_admin
+
+
+_START_SEEN = {}
 
 
 def back_only():
@@ -82,16 +87,29 @@ async def show_home(target, user_id, reply=False):
     await edit_message(target, text, components)
 
 
-@bot.event
-async def on_message(message: Message):
+def _start_key(message):
+    user_id = message.from_user.id if message.from_user else 0
+    mid = getattr(message, "message_id", None) or getattr(message, "id", None) or id(message)
+    return f"{user_id}:{mid}"
+
+
+async def handle_start(message: Message):
     if message.from_user is None:
         return
-    text = (message.content or "").strip()
-    if text != "/start":
+    key = _start_key(message)
+    now = time.time()
+    last = _START_SEEN.get(key, 0)
+    if now - last < 8:
         return
+    _START_SEEN[key] = now
+    if len(_START_SEEN) > 300:
+        cutoff = now - 60
+        for item in list(_START_SEEN):
+            if _START_SEEN[item] < cutoff:
+                _START_SEEN.pop(item, None)
+
     user = message.from_user
-    if not user_exists(user.id):
-        add_user(user.id, user.first_name, user.username)
+    add_user(user.id, user.first_name, user.username)
     if is_force_join_enabled() and not is_user_joined(user.id):
         await message.reply(
             "🔒 برای شروع کار اول در کانال اطلاع‌رسانی عضو شو.\n\nبعد روی «عضو شدم» بزن.",
@@ -99,6 +117,16 @@ async def on_message(message: Message):
         )
         return
     await message.reply(home_text(user.id), components=home_components(user.id))
+
+
+@bot.event
+async def on_message(message: Message):
+    if message.from_user is None:
+        return
+    text = (message.content or "").strip()
+    if text == "/start" or text.startswith("/start "):
+        await handle_start(message)
+        return
 
 
 @bot.event
