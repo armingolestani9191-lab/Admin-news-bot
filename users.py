@@ -127,10 +127,15 @@ def add_user(user_id, first_name, username=None):
             }
             save_users(users)
         else:
-            users[user_id]["first_name"] = first_name or users[user_id].get("first_name")
-            if username:
+            changed = False
+            if first_name and users[user_id].get("first_name") != first_name:
+                users[user_id]["first_name"] = first_name
+                changed = True
+            if username and users[user_id].get("username") != username:
                 users[user_id]["username"] = username
-            save_users(users)
+                changed = True
+            if changed:
+                save_users(users)
     finally:
         _release_lock()
 
