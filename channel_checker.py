@@ -4,14 +4,15 @@ from config import BOT_TOKEN
 
 
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
+_SESSION = requests.Session()
 
 
 def get_chat_member(chat_id, user_id):
     try:
-        response = requests.post(
+        response = _SESSION.post(
             f"{BASE_URL}/getChatMember",
             json={"chat_id": chat_id, "user_id": user_id},
-            timeout=2,
+            timeout=0.8,
         )
         if response.status_code != 200:
             return None

@@ -1,9 +1,12 @@
+import threading
+
 import requests
 
 from config import BOT_TOKEN
 
 
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
+_SESSION = requests.Session()
 
 
 def _callback_id(target):
@@ -15,18 +18,28 @@ def _callback_id(target):
 
 
 def answer_callback(target):
+    if getattr(target, "_answered", False):
+        return True
     query_id = _callback_id(target)
     if not query_id:
         return False
     try:
-        requests.post(
-            f"{BASE_URL}/answerCallbackQuery",
-            json={"callback_query_id": query_id},
-            timeout=2,
-        )
-        return True
+        target._answered = True
     except Exception:
-        return False
+        pass
+
+    def _send():
+        try:
+            _SESSION.post(
+                f"{BASE_URL}/answerCallbackQuery",
+                json={"callback_query_id": query_id},
+                timeout=0.8,
+            )
+        except Exception:
+            pass
+
+    threading.Thread(target=_send, daemon=True).start()
+    return True
 
 
 async def edit_message(target, text, components=None):

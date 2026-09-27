@@ -5,6 +5,7 @@ from bans import is_banned
 from admin_store import is_admin
 from ui import edit_message, answer_callback
 from states import get_state
+from once import once
 
 
 BAN_TEXT = "حساب شما توسط پشتیبانی بن شد."
@@ -87,7 +88,6 @@ async def _safe(handler, argument):
 def _callback_modules(data):
     mods = _load_cb()
     data = data or ""
-    names = None
     if data == "check_force_join":
         names = ("admin_panel",)
     elif data.startswith("ad_") or data.startswith("channel_stats_"):
@@ -116,17 +116,8 @@ def _callback_modules(data):
         names = ("footer_text",)
     elif data.startswith("m_") or data.startswith("pause_") or data.startswith("resume_"):
         names = ("home",)
-    if names is None:
-        names = (
-            "admin_complete",
-            "admin_panel",
-            "home",
-            "shop",
-            "channel_settings",
-            "footer_text",
-            "comments",
-            "stats",
-        )
+    else:
+        names = ()
     return [mods[name] for name in names]
 
 
@@ -147,6 +138,8 @@ def _message_modules(user_id, text):
         keys = ("comments", "navigation")
     elif name == "category_select":
         keys = ("channel_settings", "navigation")
+    elif text in ("🏠 منوی اصلی", "🔙 بازگشت"):
+        keys = ("navigation",)
     else:
         keys = (
             "admin_complete",
@@ -167,17 +160,24 @@ def _message_modules(user_id, text):
 
 @bot.event
 async def on_callback(callback: CallbackQuery):
+    if not once(callback, "dispatch_cb"):
+        return
     answer_callback(callback)
     user = callback.from_user
     if user and is_banned(user.id) and not is_admin(user.id):
         await edit_message(callback, BAN_TEXT, InlineKeyboardMarkup())
         return
-    for module in _callback_modules(callback.data or ""):
+    modules = _callback_modules(callback.data or "")
+    if not modules:
+        return
+    for module in modules:
         await _safe(getattr(module, "on_callback", None), callback)
 
 
 @bot.event
 async def on_message(message: Message):
+    if not once(message, "dispatch_msg"):
+        return
     if message.from_user is None:
         return
     user_id = message.from_user.id
