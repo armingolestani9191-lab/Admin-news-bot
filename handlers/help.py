@@ -15,17 +15,12 @@ from force_join import (
 from force_join_keyboard import force_join_keyboard
 
 
-@bot.event
 async def on_message(message: Message):
 
     if message.content != "📖 راهنما":
         return
 
     user = message.from_user
-
-    # ==========================
-    # Force Join
-    # ==========================
 
     if is_force_join_enabled():
 
