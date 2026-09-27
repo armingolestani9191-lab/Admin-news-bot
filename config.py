@@ -21,28 +21,24 @@ FORBIDDEN_COOLDOWN = 1800
 MAX_NEWS_AGE_SECONDS = 30 * 60
 FALLBACK_NEWS_AGE_SECONDS = 30 * 60
 
+# Exactly two specialized sources per category.
+# Selecting two categories uses four sites.
 CATEGORY_FEEDS = {
     "ورزش": [
         "https://www.mehrnews.com/rss/tp/9",
         "https://www.isna.ir/rss/tp/24",
-        "https://www.isna.ir/rss/tp/119",
     ],
     "جنگ": [
-        "https://www.mehrnews.com/rss/tp/39",
-        "https://www.isna.ir/rss/tp/407",
-        "https://www.irna.ir/rss/tp/9",
-        "https://www.imna.ir/rss/tp/144",
         "https://defapress.ir/fa/rss/38",
+        "https://www.mehrnews.com/rss/tp/39",
     ],
     "آب‌وهوا": [
         "https://www.isna.ir/rss/tp/62",
         "https://www.imna.ir/rss/tp/153",
     ],
     "اقتصاد": [
-        "https://www.mehrnews.com/rss/tp/20",
-        "https://www.irna.ir/rss/tp/20",
-        "https://www.isna.ir/rss/tp/34",
         "https://www.sena.ir/rss",
+        "https://www.mehrnews.com/rss/tp/20",
     ],
     "فناوری": [
         "https://www.zoomit.ir/feed/",
@@ -51,7 +47,6 @@ CATEGORY_FEEDS = {
     "سیاسی": [
         "https://www.mehrnews.com/rss/tp/7",
         "https://www.isna.ir/rss/tp/14",
-        "https://www.irna.ir/rss/tp/5",
     ],
 }
 
@@ -63,17 +58,17 @@ for _feeds in CATEGORY_FEEDS.values():
 
 CATEGORY_RULES = {
     "ورزش": {
-        "sources": ["mehrnews.com/rss/tp/9", "isna.ir/rss/tp/24", "isna.ir/rss/tp/119"],
+        "sources": ["mehrnews.com/rss/tp/9", "isna.ir/rss/tp/24"],
         "keywords": ["فوتبال", "والیبال", "بسکتبال", "لیگ برتر", "لیگ", "جام جهانی", "بازیکن", "مربی", "قهرمانی", "استقلال", "پرسپولیس", "ورزش", "تیم ملی", "داور", "گل", "مسابقه ورزشی"],
         "negative": ["موشک", "پهپاد", "هواشناسی", "بارش باران", "غزه", "حمله نظامی"],
     },
     "اقتصاد": {
-        "sources": ["sena.ir", "mehrnews.com/rss/tp/20", "irna.ir/rss/tp/20", "isna.ir/rss/tp/34"],
+        "sources": ["sena.ir", "mehrnews.com/rss/tp/20"],
         "keywords": ["دلار", "طلا", "سکه", "بورس", "ارز", "اقتصاد", "تورم", "نرخ ارز", "بانک مرکزی", "نفت", "بازار سرمایه"],
         "negative": ["فوتبال", "هواشناسی", "جنگنده", "غزه"],
     },
     "جنگ": {
-        "sources": ["defapress.ir", "mehrnews.com/rss/tp/39", "isna.ir/rss/tp/407", "irna.ir/rss/tp/9", "imna.ir/rss/tp/144"],
+        "sources": ["defapress.ir", "mehrnews.com/rss/tp/39"],
         "keywords": ["جنگ", "حمله نظامی", "حمله موشکی", "موشک", "پهپاد", "ارتش", "عملیات نظامی", "درگیری مسلحانه", "جنگنده", "تجاوز نظامی", "شهادت", "بمباران", "پدافند", "غزه", "لبنان", "سپاه", "حماس", "حزب الله", "اسرائیل", "مقاومت", "راکت", "انفجار", "نظامی"],
         "negative": ["هواشناسی", "بارش باران", "فوتبال", "لیگ برتر", "استقلال", "پرسپولیس", "دلار", "بورس"],
     },
@@ -83,7 +78,7 @@ CATEGORY_RULES = {
         "negative": ["موشک", "فوتبال", "غزه"],
     },
     "سیاسی": {
-        "sources": ["mehrnews.com/rss/tp/7", "isna.ir/rss/tp/14", "irna.ir/rss/tp/5"],
+        "sources": ["mehrnews.com/rss/tp/7", "isna.ir/rss/tp/14"],
         "keywords": ["مجلس", "دولت", "وزیر", "هیئت دولت", "رئیس جمهور", "انتخابات", "نماینده مجلس", "سیاست خارجی"],
         "negative": ["فوتبال", "هواشناسی", "موشک", "پهپاد"],
     },
