@@ -1,5 +1,5 @@
 from users import load_users
-from subscription import has_subscription, max_channels_for
+from subscription import has_subscription, max_channels_for, is_free_user, FREE_ALLOWED_CATEGORIES
 
 
 def active_news_channels():
@@ -20,6 +20,10 @@ def active_news_channels():
             item.setdefault("interval", 10)
             item.setdefault("last_send", 0)
             item.setdefault("categories", ["همه"])
+            if is_free_user(user_id):
+                allowed = list(FREE_ALLOWED_CATEGORIES)
+                picked = [name for name in (item.get("categories") or []) if name in allowed]
+                item["categories"] = picked or allowed
             item.setdefault("send_image", True)
             item.setdefault("show_emoji", True)
             item.setdefault("footer_text", "")
