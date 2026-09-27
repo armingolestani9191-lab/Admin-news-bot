@@ -1,4 +1,4 @@
-from bale import CallbackQuery, Message
+from bale import CallbackQuery, Message, InlineKeyboardMarkup
 
 from client import bot
 from bans import is_banned
@@ -22,7 +22,7 @@ async def _safe(handler, argument):
 async def on_callback(callback: CallbackQuery):
     user = callback.from_user
     if user and is_banned(user.id) and not is_admin(user.id):
-        await edit_message(callback, BAN_TEXT)
+        await edit_message(callback, BAN_TEXT, InlineKeyboardMarkup())
         return
 
     from handlers import (

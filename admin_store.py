@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import requests
 
@@ -8,18 +9,47 @@ from subscription import ADMIN_IDS
 
 try:
     from storage import users_path
-    DATA_DIR = os.path.dirname(users_path()) or os.path.dirname(USERS_FILE) or "data"
 except Exception:
-    DATA_DIR = os.path.dirname(USERS_FILE) or "data"
+    users_path = None
+
 
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
-ADMINS_FILE = os.path.join(DATA_DIR, "admins.json")
-JOIN_FILE = os.path.join(DATA_DIR, "force_join.json")
 OWNER_ID = int(ADMIN_IDS[0]) if ADMIN_IDS else 0
+_JOIN_CACHE = {"mtime": None, "items": None}
+
+
+def _data_dirs():
+    dirs = []
+    try:
+        if users_path:
+            folder = os.path.dirname(users_path())
+            if folder:
+                dirs.append(folder)
+    except Exception:
+        pass
+    parent = os.path.dirname(USERS_FILE)
+    if parent:
+        dirs.append(parent)
+    dirs.extend(["data", "Data"])
+    clean = []
+    for item in dirs:
+        if item and item not in clean:
+            clean.append(item)
+    return clean or ["data"]
+
+
+def _file_in_dirs(name):
+    return [os.path.join(folder, name) for folder in _data_dirs()]
+
+
+ADMINS_FILE = _file_in_dirs("admins.json")[0]
+JOIN_FILE = _file_in_dirs("force_join.json")[0]
 
 
 def _load(path, default):
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    folder = os.path.dirname(path)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
     if not os.path.exists(path):
         return default
     try:
@@ -31,7 +61,9 @@ def _load(path, default):
 
 
 def _save(path, data):
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    folder = os.path.dirname(path)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
@@ -87,89 +119,124 @@ def remove_admin(user_id):
     return True
 
 
+def _norm(value):
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _join_keys(item):
     keys = set()
     if not isinstance(item, dict):
         item = {"username": item, "id": item}
-    for value in (item.get("username"), item.get("id")):
-        if value is None or value == "":
+    values = [item.get("username"), item.get("id"), item]
+    for value in values:
+        text = _norm(value)
+        if not text or text.startswith("{") or text.startswith("<"):
             continue
-        text = str(value).strip()
-        keys.add(text.lower())
-        keys.add(text.lower().lstrip("@"))
+        low = text.lower()
+        keys.add(low)
+        keys.add(low.lstrip("@"))
+        if not low.startswith("@") and not low.lstrip("-").isdigit():
+            keys.add("@" + low)
+        if low.startswith("@") and len(low) > 1:
+            keys.add(low[1:])
+    return {key for key in keys if key}
+
+
+def _normalize_row(item):
+    if not isinstance(item, dict):
+        text = _norm(item)
+        if not text:
+            return None
         if not text.startswith("@") and not text.lstrip("-").isdigit():
-            keys.add("@" + text.lower())
-    return keys
+            text = "@" + text
+        return {"id": text, "username": text}
+    username = _norm(item.get("username") or item.get("id"))
+    channel_id = item.get("id")
+    if channel_id is None or _norm(channel_id) == "":
+        channel_id = username
+    if not username:
+        username = _norm(channel_id)
+    if not username:
+        return None
+    if not username.startswith("@") and not str(username).lstrip("-").isdigit():
+        username = "@" + username
+    return {"id": channel_id, "username": username}
 
 
-def load_join_channels():
-    if not os.path.exists(JOIN_FILE):
-        data = list(FORCE_JOIN_CHANNELS or [])
-        _save(JOIN_FILE, data)
-    else:
-        data = _load(JOIN_FILE, [])
-        if not isinstance(data, list):
-            data = []
+def _clean_list(data):
     clean = []
     seen = set()
     for item in data or []:
-        if not isinstance(item, dict):
+        row = _normalize_row(item)
+        if not row:
             continue
-        username = str(item.get("username") or item.get("id") or "").strip()
-        if not username:
-            continue
-        if not username.startswith("@") and not str(item.get("id", "")).lstrip("-").isdigit():
-            username = "@" + username
-        row = {
-            "id": item.get("id") or username,
-            "username": username,
-        }
         marker = tuple(sorted(_join_keys(row)))
-        if marker in seen:
+        if not marker or marker in seen:
             continue
         seen.add(marker)
         clean.append(row)
     return clean[:3]
 
 
+def _newest_join_path():
+    found = []
+    for path in _file_in_dirs("force_join.json"):
+        if os.path.exists(path):
+            try:
+                found.append((os.path.getmtime(path), path))
+            except OSError:
+                found.append((0, path))
+    if not found:
+        return None
+    found.sort(reverse=True)
+    return found[0][1]
+
+
 def save_join_channels(items):
-    clean = []
-    for item in items or []:
-        if not isinstance(item, dict):
-            continue
-        username = str(item.get("username") or item.get("id") or "").strip()
-        if not username:
-            continue
-        clean.append({
-            "id": item.get("id") or username,
-            "username": username,
-        })
-    _save(JOIN_FILE, clean[:3])
+    global _JOIN_CACHE
+    clean = _clean_list(items)
+    for path in _file_in_dirs("force_join.json"):
+        _save(path, clean)
+    _JOIN_CACHE = {"mtime": time.time(), "items": list(clean)}
+    return clean
+
+
+def load_join_channels():
+    path = _newest_join_path()
+    if not path:
+        seeded = _clean_list(list(FORCE_JOIN_CHANNELS or []))
+        return save_join_channels(seeded)
+    return _clean_list(_load(path, []))
 
 
 def add_join_channel(channel):
-    if not channel:
+    row = _normalize_row(channel)
+    if not row:
         return False, "کانال پیدا نشد."
     items = load_join_channels()
-    new_keys = _join_keys(channel)
+    new_keys = _join_keys(row)
     if any(not _join_keys(item).isdisjoint(new_keys) for item in items):
         return False, "این کانال قبلاً هست."
     if len(items) >= 3:
         return False, "سقف ۳ کانال پر است."
-    items.append({
-        "id": channel.get("id") or channel.get("username"),
-        "username": channel.get("username") or channel.get("id"),
-    })
+    items.append(row)
     save_join_channels(items)
     return True, "اضافه شد."
 
 
 def remove_join_channel(text):
-    raw = (text or "").strip()
-    if not raw:
+    if isinstance(text, dict):
+        raw_keys = _join_keys(text)
+    else:
+        raw = _norm(text)
+        if not raw:
+            return False
+        raw_keys = _join_keys({"username": raw, "id": raw})
+    if not raw_keys:
         return False
     items = load_join_channels()
-    raw_keys = _join_keys({"username": raw, "id": raw})
     keep = [item for item in items if _join_keys(item).isdisjoint(raw_keys)]
     if len(keep) == len(items):
         return False
@@ -177,10 +244,25 @@ def remove_join_channel(text):
     return True
 
 
+def remove_join_channel_at(index):
+    items = load_join_channels()
+    try:
+        index = int(index)
+    except Exception:
+        return False
+    if index < 0 or index >= len(items):
+        return False
+    items.pop(index)
+    save_join_channels(items)
+    return True
+
+
 def resolve_channel(username):
-    username = (username or "").strip()
+    username = _norm(username)
     if not username:
         return None
+    if username.startswith("https://") or username.startswith("http://"):
+        username = username.rstrip("/").split("/")[-1]
     if not username.startswith("@") and not username.lstrip("-").isdigit():
         username = "@" + username
     try:
@@ -194,11 +276,9 @@ def resolve_channel(username):
             result = payload.get("result") or {}
             uname = result.get("username")
             return {
-                "id": result.get("id") or username,
+                "id": result.get("id") if result.get("id") is not None else username,
                 "username": ("@" + uname) if uname else username,
             }
     except Exception:
         pass
-    if username.startswith("@"):
-        return {"id": username, "username": username}
-    return None
+    return {"id": username, "username": username}

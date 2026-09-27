@@ -1,40 +1,26 @@
-# ==========================
-# AutoNewsBot States
-# Version 2.0.0
-# ==========================
-
-# وضعیت کاربران
 user_states = {}
 
 
-def set_state(user_id, state, data=None):
-    """
-    تنظیم وضعیت کاربر
-    """
+def _key(user_id):
+    return str(user_id)
 
-    user_states[user_id] = {
+
+def set_state(user_id, state, data=None):
+    user_states[_key(user_id)] = {
         "state": state,
-        "data": data or {}
+        "data": data or {},
     }
 
 
 def get_state(user_id):
-    """
-    دریافت وضعیت کاربر
-    """
-
     return user_states.get(
-        user_id,
+        _key(user_id),
         {
             "state": None,
-            "data": {}
-        }
+            "data": {},
+        },
     )
 
 
 def clear_state(user_id):
-    """
-    حذف وضعیت کاربر
-    """
-
-    user_states.pop(user_id, None)
+    user_states.pop(_key(user_id), None)
