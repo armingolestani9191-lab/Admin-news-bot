@@ -44,6 +44,7 @@ def _file_in_dirs(name):
 
 ADMINS_FILE = _file_in_dirs("admins.json")[0]
 JOIN_FILE = _file_in_dirs("force_join.json")[0]
+_ADMIN_CACHE = {"mtime": None, "ids": None}
 
 
 def _load(path, default):
@@ -82,6 +83,14 @@ def extra_admin_ids():
 
 
 def all_admin_ids():
+    global _ADMIN_CACHE
+    try:
+        mtime = os.path.getmtime(ADMINS_FILE) if os.path.exists(ADMINS_FILE) else 0
+    except OSError:
+        mtime = 0
+    cached = _ADMIN_CACHE.get("ids")
+    if cached is not None and _ADMIN_CACHE.get("mtime") == mtime:
+        return list(cached)
     ids = []
     for item in list(ADMIN_IDS) + extra_admin_ids():
         try:
@@ -90,6 +99,7 @@ def all_admin_ids():
             continue
         if value not in ids:
             ids.append(value)
+    _ADMIN_CACHE = {"mtime": mtime, "ids": list(ids)}
     return ids
 
 
@@ -101,21 +111,25 @@ def is_admin(user_id):
 
 
 def add_admin(user_id):
+    global _ADMIN_CACHE
     user_id = int(user_id)
     if user_id in all_admin_ids():
         return False
     ids = extra_admin_ids()
     ids.append(user_id)
     _save(ADMINS_FILE, ids)
+    _ADMIN_CACHE = {"mtime": None, "ids": None}
     return True
 
 
 def remove_admin(user_id):
+    global _ADMIN_CACHE
     user_id = int(user_id)
     if user_id == OWNER_ID:
         return False
     ids = [item for item in extra_admin_ids() if item != user_id]
     _save(ADMINS_FILE, ids)
+    _ADMIN_CACHE = {"mtime": None, "ids": None}
     return True
 
 
@@ -204,11 +218,20 @@ def save_join_channels(items):
 
 
 def load_join_channels():
+    global _JOIN_CACHE
     path = _newest_join_path()
     if not path:
         seeded = _clean_list(list(FORCE_JOIN_CHANNELS or []))
         return save_join_channels(seeded)
-    return _clean_list(_load(path, []))
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = None
+    if _JOIN_CACHE.get("items") is not None and _JOIN_CACHE.get("mtime") == mtime:
+        return list(_JOIN_CACHE["items"])
+    items = _clean_list(_load(path, []))
+    _JOIN_CACHE = {"mtime": mtime, "items": list(items)}
+    return items
 
 
 def add_join_channel(channel):
