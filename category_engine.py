@@ -40,6 +40,9 @@ def score_category(title, source, rules):
         site = normalize_text(site)
         if site and (site in host or site in raw_source):
             score += 8
+    if rules.get("require_iran"):
+        if not any(normalize_text(word) in text for word in IRAN_HINTS):
+            score -= 4
     return score
 
 
@@ -50,32 +53,42 @@ def _looks_like_weather(title):
 
 
 def news_matches_channel(title, source, selected_categories, feed_category=None):
-    selected = list(selected_categories or [])
+    selected = [item for item in (selected_categories or []) if item]
     if not selected:
         return False
     if "همه" in selected:
         if feed_category == "آب‌وهوا" and not _looks_like_weather(title):
             return False
         return True
-    if not feed_category or feed_category not in selected:
-        return False
-    if feed_category == "آب‌وهوا":
-        return _looks_like_weather(title)
-    own_score = score_category(title, source, CATEGORY_RULES.get(feed_category, {}))
-    for other_name, other_rules in CATEGORY_RULES.items():
-        if other_name == feed_category or other_name not in selected and other_name != feed_category:
-            other_score = score_category(title, source, other_rules)
-            if other_name not in selected and other_score >= 9 and other_score > own_score + 3:
-                return False
-    return True
+    if feed_category and feed_category in selected:
+        if feed_category == "آب‌وهوا":
+            return _looks_like_weather(title)
+        return True
+    guessed = None
+    best = 0
+    for name, rules in CATEGORY_RULES.items():
+        score = score_category(title, source, rules)
+        if score > best:
+            best = score
+            guessed = name
+    return bool(guessed and guessed in selected and best >= 3)
 
 
 def detect_categories(title, source="", feed_category=None):
-    if feed_category and news_matches_channel(title, source, [feed_category], feed_category):
+    if feed_category:
         return [feed_category]
-    return [feed_category] if feed_category else []
+    best_name = None
+    best_score = 0
+    for name, rules in CATEGORY_RULES.items():
+        score = score_category(title, source, rules)
+        if score > best_score:
+            best_score = score
+            best_name = name
+    if best_name and best_score >= 3:
+        return [best_name]
+    return []
 
 
 def detect_category_advanced(title, source="", feed_category=None):
     matched = detect_categories(title, source, feed_category)
-    return matched[0] if matched else "عمومی"
+    return matched[0] if matched else (feed_category or "عمومی")
