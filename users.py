@@ -142,6 +142,8 @@ def add_channel(user_id, channel, max_channels=3):
         for item in channels:
             if str(item.get("id") or "").lower() == str(channel).lower():
                 return False
+        from subscription import is_free_user, FREE_ALLOWED_CATEGORIES
+        default_categories = list(FREE_ALLOWED_CATEGORIES) if is_free_user(user_id) else ["همه"]
         channels.append({
             "id": channel,
             "status": "active",
@@ -150,7 +152,7 @@ def add_channel(user_id, channel, max_channels=3):
             "footer_text": "",
             "interval": 10,
             "last_send": 0,
-            "categories": ["همه"],
+            "categories": default_categories,
             "comment_on": False,
             "comment_text": "",
         })
