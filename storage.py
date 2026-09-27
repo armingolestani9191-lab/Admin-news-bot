@@ -3,6 +3,8 @@ import os
 
 from config import SENT_NEWS_FILE, USERS_FILE, MAX_SENT_NEWS
 
+_SENT_CACHE = {"path": None, "mtime": None, "data": None}
+
 
 def _pick_existing_path(preferred, filename):
     folder = os.path.dirname(preferred)
@@ -59,14 +61,30 @@ def load_sent_store():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 
     if not os.path.exists(path):
-        save_sent_store(_empty_sent_store())
-        return _empty_sent_store()
+        empty = _empty_sent_store()
+        save_sent_store(empty)
+        return empty
+
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = None
+    if (
+        _SENT_CACHE["data"] is not None
+        and _SENT_CACHE["path"] == path
+        and _SENT_CACHE["mtime"] == mtime
+    ):
+        return _SENT_CACHE["data"]
 
     try:
         with open(path, "r", encoding="utf-8") as file:
-            return _normalize_sent_store(json.load(file))
+            store = _normalize_sent_store(json.load(file))
     except (json.JSONDecodeError, OSError):
-        return _empty_sent_store()
+        store = _empty_sent_store()
+    _SENT_CACHE["path"] = path
+    _SENT_CACHE["mtime"] = mtime
+    _SENT_CACHE["data"] = store
+    return store
 
 
 def save_sent_store(store):
@@ -91,6 +109,13 @@ def save_sent_store(store):
 
     with open(path, "w", encoding="utf-8") as file:
         json.dump(clean, file, ensure_ascii=False, indent=2)
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = None
+    _SENT_CACHE["path"] = path
+    _SENT_CACHE["mtime"] = mtime
+    _SENT_CACHE["data"] = clean
 
 
 def is_news_sent(channel_id, link):
