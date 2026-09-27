@@ -107,24 +107,45 @@ def channels_stats_text(page=0):
     return text
 
 
-def _active_subscribers():
+def _user_rows():
     rows = []
     users = load_users()
     for user_id, user in users.items():
         if not isinstance(user, dict):
             continue
         info = subscription_info(user_id)
-        if not info["active"]:
-            continue
         username = user.get("username")
         mention = ("@" + str(username).lstrip("@")) if username else str(user_id)
         rows.append((str(user_id), mention, info))
+    rows.sort(key=lambda item: (not item[2]["active"], item[1].lower()))
     return rows
+
+
+def find_user_query(text):
+    raw = (text or "").strip().lstrip("@")
+    if not raw:
+        return None
+    users = load_users()
+    if raw in users:
+        return raw
+    if raw.isdigit():
+        number = str(int(raw))
+        if number in users:
+            return number
+        if raw in users:
+            return raw
+    needle = raw.lower()
+    for user_id, user in users.items():
+        username = str((user or {}).get("username") or "").lstrip("@").lower()
+        if username and username == needle:
+            return str(user_id)
+    return None
 
 
 def users_manage_text(page=0):
     users = load_users()
-    rows = _active_subscribers()
+    rows = _user_rows()
+    active_count = sum(1 for _uid, _mention, info in rows if info["active"])
     per_page = 8
     total_pages = max(1, (len(rows) + per_page - 1) // per_page)
     page = max(0, min(page, total_pages - 1))
@@ -133,16 +154,27 @@ def users_manage_text(page=0):
         "👤 مدیریت کاربران",
         "━━━━━━━━━━━━━━",
         f"👥 تعداد کل کاربران: {len(users)}",
-        f"⭐ اشتراک فعال (رایگان و پولی): {len(rows)}",
+        f"⭐ اشتراک فعال (رایگان و پولی): {active_count}",
         f"📄 صفحه {page + 1}/{total_pages}",
         "",
-        "روی کاربر بزن تا اطلاعاتش را ببینی.",
+        "روی اسم کاربر بزن تا اطلاعاتش باز شود.",
+        "یا با دکمه جستجو آیدی / یوزرنیم بفرست.",
     ]
     keyboard = InlineKeyboardMarkup()
     row_i = 1
-    for user_id, mention, _info in chunk:
-        keyboard.add(InlineKeyboardButton(mention, callback_data=f"ad_uv_{user_id}"), row=row_i)
+    keyboard.add(InlineKeyboardButton("🔎 جستجو با آیدی یا یوزرنیم", callback_data="ad_ufind"), row=row_i)
+    row_i += 1
+    if not chunk:
+        keyboard.add(InlineKeyboardButton("هنوز کاربری ثبت نشده", callback_data="ad_ignore"), row=row_i)
         row_i += 1
+    else:
+        for user_id, mention, info in chunk:
+            if info["active"]:
+                label = f"⭐ {mention} | {info['remaining']}روز"
+            else:
+                label = f"{mention} | بدون اشتراک"
+            keyboard.add(InlineKeyboardButton(label, callback_data=f"ad_uv_{user_id}"), row=row_i)
+            row_i += 1
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton("⬅️", callback_data=f"ad_umgmt_{page-1}"))
@@ -156,7 +188,11 @@ def users_manage_text(page=0):
 
 
 def user_detail_view(target_id):
-    user = get_user(target_id) or {}
+    user = get_user(target_id)
+    if not user:
+        keyboard = InlineKeyboardMarkup()
+        keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_umgmt"), row=1)
+        return "کاربر پیدا نشد.", keyboard
     info = subscription_info(target_id)
     username = user.get("username")
     mention = ("@" + str(username).lstrip("@")) if username else "ندارد"
@@ -231,6 +267,10 @@ async def on_callback(callback: CallbackQuery):
         text, keyboard = users_manage_text(page)
         await edit_message(callback, text, keyboard)
         return
+    if data == "ad_ufind":
+        set_state(user_id, "admin_user_find", {})
+        await edit_message(callback, "🔎 آیدی عددی یا یوزرنیم کاربر را بفرست.\nمثال: 123456789 یا @username", back_admin())
+        return
     if data.startswith("ad_uv_"):
         target = data.replace("ad_uv_", "", 1)
         text, keyboard = user_detail_view(target)
@@ -302,6 +342,16 @@ async def on_message(message: Message):
             f"✅ شماره کارت عوض شد.\n\nاز این بعد در خرید اشتراک این کارت می‌آید:\n`{number}`",
             components=admin_menu(),
         )
+        return
+    if name == "admin_user_find":
+        clear_state(user_id)
+        target = find_user_query(text)
+        if not target:
+            text_page, keyboard = users_manage_text(0)
+            await message.reply("⚠️ کاربر پیدا نشد.\nآیدی یا یوزرنیم را دوباره بفرست.\n\n" + text_page, components=keyboard)
+            return
+        detail, keyboard = user_detail_view(target)
+        await message.reply(detail, components=keyboard)
         return
     if name == "admin_user_msg":
         target = (state.get("data") or {}).get("target_id")
