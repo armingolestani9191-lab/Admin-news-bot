@@ -58,6 +58,12 @@ async def on_message(message: Message):
         await message.reply(BAN_TEXT)
         return
 
+    text = (message.content or "").strip()
+    if text == "/start" or text.startswith("/start "):
+        from handlers.home import handle_start
+        await _safe(handle_start, message)
+        return
+
     from handlers import (
         admin_complete,
         admin_panel,
