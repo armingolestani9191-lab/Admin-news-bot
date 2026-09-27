@@ -25,11 +25,12 @@ FREE_MAX_CHANNELS = 1
 PAID_MAX_CHANNELS = 3
 FREE_ALLOWED_CATEGORIES = ["ورزش", "آب‌وهوا"]
 FREE_LOCKED_TIMES = {1, 5}
-CARD_NUMBER = os.getenv("CARD_NUMBER", "6037-9975-1111-2222")
+_DEFAULT_CARD = os.getenv("CARD_NUMBER", "6037-9975-1111-2222")
 ADMIN_IDS = [595450272]
 
 LICENSES_FILE = os.path.join(os.path.dirname(users_path()) or "data", "licenses.json")
 PAYMENTS_FILE = os.path.join(os.path.dirname(users_path()) or "data", "payments.json")
+CARD_FILE = os.path.join(os.path.dirname(users_path()) or "data", "card.json")
 
 
 def today_tehran():
@@ -54,6 +55,32 @@ def _save_json(path, data):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w", encoding="utf-8") as file:
         json.dump(data, file, ensure_ascii=False, indent=2)
+
+
+def get_card_number():
+    data = _load_json(CARD_FILE, {})
+    number = ""
+    if isinstance(data, dict):
+        number = str(data.get("number") or "").strip()
+    elif isinstance(data, str):
+        number = data.strip()
+    return number or _DEFAULT_CARD
+
+
+def set_card_number(raw):
+    text = str(raw or "").strip().replace(" ", "")
+    digits = "".join(ch for ch in text if ch.isdigit())
+    if len(digits) < 12 or len(digits) > 19:
+        return None
+    if len(digits) == 16:
+        number = f"{digits[0:4]}-{digits[4:8]}-{digits[8:12]}-{digits[12:16]}"
+    else:
+        number = digits
+    _save_json(CARD_FILE, {"number": number})
+    return number
+
+
+CARD_NUMBER = get_card_number()
 
 
 def load_licenses():
@@ -132,6 +159,17 @@ def activate_subscription(user_id, kind, days):
             "type": kind,
             "expire": expire.isoformat(),
             "total_days": int(days),
+        }
+    })
+    return True
+
+
+def clear_subscription(user_id):
+    update_user(user_id, {
+        "subscription": {
+            "type": None,
+            "expire": None,
+            "total_days": 0,
         }
     })
     return True
