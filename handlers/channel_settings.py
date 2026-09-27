@@ -153,7 +153,7 @@ async def on_callback(callback: CallbackQuery):
         )
         return
 
-    if data.startswith("channel_"):
+    if data.startswith("channel_") and not data.startswith("channel_stats_"):
         await _show_settings(callback, data.replace("channel_", "", 1))
         return
 
