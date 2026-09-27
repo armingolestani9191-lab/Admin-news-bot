@@ -1,5 +1,3 @@
-import threading
-
 import requests
 
 from config import BOT_TOKEN
@@ -10,10 +8,16 @@ _SESSION = requests.Session()
 
 
 def _callback_id(target):
-    for name in ("id", "callback_id", "query_id"):
+    for name in ("callback_id", "query_id", "id"):
         value = getattr(target, name, None)
         if value:
             return str(value)
+    message = getattr(target, "message", None)
+    if message is not None:
+        for name in ("callback_id", "query_id"):
+            value = getattr(message, name, None)
+            if value:
+                return str(value)
     return None
 
 
@@ -27,19 +31,15 @@ def answer_callback(target):
         target._answered = True
     except Exception:
         pass
-
-    def _send():
-        try:
-            _SESSION.post(
-                f"{BASE_URL}/answerCallbackQuery",
-                json={"callback_query_id": query_id},
-                timeout=0.8,
-            )
-        except Exception:
-            pass
-
-    threading.Thread(target=_send, daemon=True).start()
-    return True
+    try:
+        _SESSION.post(
+            f"{BASE_URL}/answerCallbackQuery",
+            json={"callback_query_id": query_id},
+            timeout=0.4,
+        )
+        return True
+    except Exception:
+        return False
 
 
 async def edit_message(target, text, components=None):

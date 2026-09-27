@@ -52,22 +52,47 @@ def _looks_like_weather(title):
     return any(normalize_text(word) and normalize_text(word) in text for word in words)
 
 
+def _scores(title, source):
+    return {
+        name: score_category(title, source, rules)
+        for name, rules in CATEGORY_RULES.items()
+    }
+
+
+def _conflicts(title, source, intended):
+    scores = _scores(title, source)
+    own = scores.get(intended, 0)
+    others = [(name, value) for name, value in scores.items() if name != intended]
+    if not others:
+        return False
+    other_name, other_score = max(others, key=lambda item: item[1])
+    if other_score >= 3 and other_score > own:
+        return True
+    return False
+
+
 def news_matches_channel(title, source, selected_categories, feed_category=None):
     selected = [item for item in (selected_categories or []) if item]
     if not selected:
         return False
+
     if "همه" in selected:
-        if feed_category == "آب‌وهوا" and not _looks_like_weather(title):
-            return False
-        return True
+        if feed_category == "آب‌وهوا":
+            return _looks_like_weather(title)
+        return not _looks_like_weather(title)
+
     if feed_category and feed_category in selected:
         if feed_category == "آب‌وهوا":
             return _looks_like_weather(title)
+        if _looks_like_weather(title):
+            return False
+        if _conflicts(title, source, feed_category):
+            return False
         return True
+
     guessed = None
     best = 0
-    for name, rules in CATEGORY_RULES.items():
-        score = score_category(title, source, rules)
+    for name, score in _scores(title, source).items():
         if score > best:
             best = score
             guessed = name
@@ -76,11 +101,14 @@ def news_matches_channel(title, source, selected_categories, feed_category=None)
 
 def detect_categories(title, source="", feed_category=None):
     if feed_category:
+        if feed_category == "آب‌وهوا" and not _looks_like_weather(title):
+            return []
+        if _conflicts(title, source, feed_category):
+            return []
         return [feed_category]
     best_name = None
     best_score = 0
-    for name, rules in CATEGORY_RULES.items():
-        score = score_category(title, source, rules)
+    for name, score in _scores(title, source).items():
         if score > best_score:
             best_score = score
             best_name = name
