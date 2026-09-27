@@ -12,7 +12,9 @@ from admin_store import (
     remove_admin,
     OWNER_ID,
     load_join_channels,
-    save_join_channels,
+    add_join_channel,
+    remove_join_channel,
+    remove_join_channel_at,
     resolve_channel,
 )
 from broadcast_util import run_broadcast, is_forwarded, has_media
@@ -93,20 +95,31 @@ def news_today_text():
 
 def join_text():
     channels = load_join_channels()
-    lines = ["🔒 کانال‌های جوین اجباری", ""]
-    for index in range(3):
-        if index < len(channels):
-            lines.append(f"{index + 1}. {channels[index].get('username') or channels[index].get('id')}")
-        else:
-            lines.append(f"{index + 1}. ندارد")
+    lines = ["🔒 کانال‌های جوین اجباری", "━━━━━━━━━━━━━━", ""]
+    if not channels:
+        lines.append("الان هیچ کانالی در جوین اجباری نیست.")
+        lines.append("با دکمه افزودن، کانال جدید ثبت کن.")
+    else:
+        for index, item in enumerate(channels, start=1):
+            lines.append(f"{index}. {item.get('username') or item.get('id')}")
+        lines.append("")
+        lines.append("برای حذف، روی دکمه همان کانال بزن.")
     return "\n".join(lines)
 
 
 def join_menu():
     keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("➕ افزودن کانال", callback_data="ad_join_add"), row=1)
-    keyboard.add(InlineKeyboardButton("🗑 حذف کانال", callback_data="ad_join_del"), row=1)
-    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_home"), row=2)
+    channels = load_join_channels()
+    row = 1
+    for index, item in enumerate(channels):
+        label = item.get("username") or item.get("id")
+        keyboard.add(
+            InlineKeyboardButton(f"🗑 حذف {label}", callback_data=f"ad_join_rm_{index}"),
+            row=row,
+        )
+        row += 1
+    keyboard.add(InlineKeyboardButton("➕ افزودن کانال", callback_data="ad_join_add"), row=row)
+    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_home"), row=row + 1)
     return keyboard
 
 
@@ -227,10 +240,16 @@ async def on_callback(callback: CallbackQuery):
         return
     if data == "ad_join_add":
         if len(load_join_channels()) >= 3:
-            await edit_message(callback, "⚠️ بیشتر از ۳ کانال نمی‌شود.", join_menu())
+            await edit_message(callback, "⚠️ بیشتر از ۳ کانال نمی‌شود.\n\n" + join_text(), join_menu())
             return
         set_state(user_id, "admin_join_add", {})
         await edit_message(callback, "➕ یوزرنیم کانال را بفرست.\nمثال: @mychannel", back_admin())
+        return
+    if data.startswith("ad_join_rm_"):
+        index = data.replace("ad_join_rm_", "", 1)
+        ok = remove_join_channel_at(index)
+        text = "✅ حذف شد و ذخیره شد.\n\n" + join_text() if ok else "⚠️ این کانال در لیست نبود.\n\n" + join_text()
+        await edit_message(callback, text, join_menu())
         return
     if data == "ad_join_del":
         set_state(user_id, "admin_join_del", {})
@@ -303,32 +322,18 @@ async def on_message(message: Message):
     if name == "admin_join_add":
         channel = resolve_channel(text)
         clear_state(user_id)
-        items = load_join_channels()
-        if not channel:
-            await message.reply("⚠️ کانال پیدا نشد.", components=join_menu())
-            return
-        if len(items) >= 3:
-            await message.reply("⚠️ سقف ۳ کانال پر است.", components=join_menu())
-            return
-        key = str(channel.get("username") or "").lower()
-        if any(str(item.get("username") or "").lower() == key for item in items):
-            await message.reply("⚠️ این کانال قبلاً هست.", components=join_menu())
-            return
-        items.append(channel)
-        save_join_channels(items)
-        await message.reply("✅ اضافه شد.\n\n" + join_text(), components=join_menu())
+        ok, info = add_join_channel(channel)
+        prefix = "✅ " if ok else "⚠️ "
+        await message.reply(prefix + info + "\n\n" + join_text(), components=join_menu())
         return
 
     if name == "admin_join_del":
-        raw = text if text.startswith("@") else "@" + text.lstrip("@")
-        items = load_join_channels()
-        keep = [item for item in items if str(item.get("username") or "").lower() != raw.lower()]
-        save_join_channels(keep)
         clear_state(user_id)
-        if len(keep) == len(items):
-            await message.reply("⚠️ این کانال در لیست نبود.", components=join_menu())
+        ok = remove_join_channel(text)
+        if ok:
+            await message.reply("✅ حذف شد و ذخیره شد.\n\n" + join_text(), components=join_menu())
         else:
-            await message.reply("✅ حذف شد.\n\n" + join_text(), components=join_menu())
+            await message.reply("⚠️ این کانال در لیست نبود.\n\n" + join_text(), components=join_menu())
         return
 
     if name == "admin_add":
