@@ -6,23 +6,24 @@ from datetime import datetime
 from storage import users_path
 
 _LOCK_PATH = users_path() + ".lock"
+_CACHE = {"path": None, "mtime": None, "data": None}
 
 
 def _acquire_lock():
     os.makedirs(os.path.dirname(users_path()) or ".", exist_ok=True)
-    for _ in range(50):
+    for _ in range(40):
         try:
             fd = os.open(_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.close(fd)
             return True
         except FileExistsError:
             try:
-                if time.time() - os.path.getmtime(_LOCK_PATH) > 8:
+                if time.time() - os.path.getmtime(_LOCK_PATH) > 4:
                     os.remove(_LOCK_PATH)
                     continue
             except OSError:
                 pass
-            time.sleep(0.05)
+            time.sleep(0.01)
     return False
 
 
@@ -33,6 +34,17 @@ def _release_lock():
         pass
 
 
+def _remember(path, users):
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = time.time()
+    _CACHE["path"] = path
+    _CACHE["mtime"] = mtime
+    _CACHE["data"] = users
+    return users
+
+
 def load_users():
     path = users_path()
     folder = os.path.dirname(path)
@@ -41,13 +53,24 @@ def load_users():
     if not os.path.exists(path):
         with open(path, "w", encoding="utf-8") as file:
             json.dump({}, file, ensure_ascii=False, indent=4)
-        return {}
+        return _remember(path, {})
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = None
+    if (
+        _CACHE["data"] is not None
+        and _CACHE["path"] == path
+        and _CACHE["mtime"] == mtime
+    ):
+        return _CACHE["data"]
     try:
         with open(path, "r", encoding="utf-8") as file:
             users = json.load(file)
-            return users if isinstance(users, dict) else {}
+            users = users if isinstance(users, dict) else {}
     except (json.JSONDecodeError, OSError):
-        return {}
+        users = {}
+    return _remember(path, users)
 
 
 def save_users(users):
@@ -59,6 +82,7 @@ def save_users(users):
     with open(tmp, "w", encoding="utf-8") as file:
         json.dump(users, file, ensure_ascii=False, indent=4)
     os.replace(tmp, path)
+    _remember(path, users)
 
 
 def _patch_channel(user_id, channel_id, updates):
