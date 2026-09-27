@@ -15,7 +15,14 @@ def is_user_joined(user_id):
     if not channels:
         return True
     for channel in channels:
-        status = get_chat_member(channel.get("id") or channel.get("username"), user_id)
-        if status not in ("creator", "administrator", "member"):
+        ok = False
+        for target in (channel.get("id"), channel.get("username")):
+            if not target:
+                continue
+            status = get_chat_member(target, user_id)
+            if status in ("creator", "administrator", "member"):
+                ok = True
+                break
+        if not ok:
             return False
     return True

@@ -20,6 +20,7 @@ import handlers.admin_system
 import handlers.admin
 import handlers.support
 import handlers.help
+import handlers.dispatch
 
 @bot.event
 async def on_ready():
