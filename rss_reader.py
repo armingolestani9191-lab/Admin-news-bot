@@ -9,11 +9,6 @@ import requests
 
 from config import CATEGORY_FEEDS, MAX_NEWS_AGE_SECONDS, RSS_CACHE_SECONDS
 
-try:
-    from config import FALLBACK_NEWS_AGE_SECONDS
-except Exception:
-    FALLBACK_NEWS_AGE_SECONDS = 3 * 60 * 60
-
 
 _CACHE = {"key": None, "at": 0, "items": []}
 _DEAD_FEEDS = {}
@@ -68,10 +63,7 @@ def entry_published(entry, fallback=0):
             continue
         try:
             dt = parsedate_to_datetime(raw)
-            if dt.tzinfo is None:
-                stamp = int(dt.timestamp()) - 3 * 3600 - 1800
-            else:
-                stamp = int(dt.timestamp())
+            stamp = int(dt.timestamp())
             if stamp:
                 return stamp
         except Exception:
@@ -86,7 +78,7 @@ def is_fresh(news, now=None, max_age=None):
         return False
     if published > now + 180:
         published = now
-    return (now - published) <= (max_age or FALLBACK_NEWS_AGE_SECONDS)
+    return (now - published) <= (max_age or MAX_NEWS_AGE_SECONDS)
 
 
 def _feeds_for(categories):
@@ -129,10 +121,11 @@ def _fetch_one(category, feed_url):
         link = (entry.get("link") or "").strip()
         if not title or not link:
             continue
-        fallback = now - index * 120
-        published = entry_published(entry, fallback=fallback)
+        published = entry_published(entry, fallback=0)
         if published <= 0:
-            published = fallback
+            continue
+        if published < now and (now - published) > MAX_NEWS_AGE_SECONDS:
+            continue
         items.append({
             "title": title,
             "link": link,
@@ -147,12 +140,8 @@ def _fetch_one(category, feed_url):
 
 def _rank(items, now):
     fresh = [item for item in items if is_fresh(item, now, MAX_NEWS_AGE_SECONDS)]
-    if fresh:
-        fresh.sort(key=lambda item: item.get("published") or 0, reverse=True)
-        return fresh
-    older = [item for item in items if is_fresh(item, now, FALLBACK_NEWS_AGE_SECONDS)]
-    older.sort(key=lambda item: item.get("published") or 0, reverse=True)
-    return older[:8]
+    fresh.sort(key=lambda item: item.get("published") or 0, reverse=True)
+    return fresh
 
 
 def get_news(categories=None):
