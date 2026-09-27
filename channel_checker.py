@@ -19,7 +19,7 @@ def get_chat_member(chat_id, user_id):
                 "chat_id": chat_id,
                 "user_id": user_id
             },
-            timeout=10
+            timeout=4
         )
 
         if response.status_code != 200:
