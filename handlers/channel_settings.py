@@ -16,9 +16,27 @@ from users import (
     update_categories,
     update_send_time,
 )
-from handlers.channel import show_channels
 from states import set_state, get_state, clear_state
 from subscription import is_free_user, FREE_ALLOWED_CATEGORIES, FREE_LOCKED_TIMES
+from once import once
+
+
+CAT_SLUGS = {
+    "war": "جنگ",
+    "weather": "آب‌وهوا",
+    "eco": "اقتصاد",
+    "tech": "فناوری",
+    "sport": "ورزش",
+    "pol": "سیاسی",
+    "all": "همه",
+    "جنگ": "جنگ",
+    "آب‌وهوا": "آب‌وهوا",
+    "اقتصاد": "اقتصاد",
+    "فناوری": "فناوری",
+    "ورزش": "ورزش",
+    "سیاسی": "سیاسی",
+    "همه": "همه",
+}
 
 
 def _locks(user_id):
@@ -26,6 +44,10 @@ def _locks(user_id):
         locked_cats = [name for name in ("جنگ", "اقتصاد", "فناوری", "سیاسی", "همه") if name not in FREE_ALLOWED_CATEGORIES]
         return locked_cats, FREE_LOCKED_TIMES
     return [], set()
+
+
+def _same_channel(left, right):
+    return str(left or "").strip().lower() == str(right or "").strip().lower()
 
 
 def _channel_flags(user, channel_id):
@@ -36,12 +58,14 @@ def _channel_flags(user, channel_id):
     if not user:
         return send_image, show_emoji, categories, interval
     for channel in user.get("channels", []):
-        if channel.get("id") == channel_id:
+        if _same_channel(channel.get("id"), channel_id):
             send_image = channel.get("send_image", True)
             show_emoji = channel.get("show_emoji", True)
-            categories = channel.get("categories") or ["همه"]
+            categories = list(channel.get("categories") or ["همه"])
             interval = channel.get("interval", 10)
             break
+    if "همه" in categories and len(categories) > 1:
+        categories = ["همه"]
     return send_image, show_emoji, categories, interval
 
 
@@ -70,36 +94,61 @@ async def _show_settings(callback, channel_id):
     )
 
 
+def _toggle_categories(selected, category, locked_cats):
+    selected = [item for item in (selected or []) if item]
+    if category in locked_cats:
+        return selected or ["همه"]
+    if category == "همه":
+        return ["همه"]
+    selected = [item for item in selected if item != "همه"]
+    if category in selected:
+        selected.remove(category)
+    else:
+        selected.append(category)
+    if not selected:
+        if locked_cats:
+            return [item for item in ("ورزش", "آب‌وهوا") if item not in locked_cats][:1] or ["ورزش"]
+        return ["همه"]
+    return selected
+
+
 @bot.event
 async def on_callback(callback: CallbackQuery):
+    if not once(callback, "channel_settings"):
+        return
     data = callback.data or ""
     user_id = callback.from_user.id
     locked_cats, locked_times = _locks(user_id)
 
-    if data.startswith("cat_select_"):
-        category = data.replace("cat_select_", "", 1)
-        if category in locked_cats:
-            await edit_message(callback, "این دسته با اشتراک رایگان قفل است.", category_menu(get_state(user_id)["data"].get("categories", []), locked_cats))
-            return
+    if data.startswith("csel_") or data.startswith("cat_select_"):
+        raw = data.replace("csel_", "", 1).replace("cat_select_", "", 1)
+        category = CAT_SLUGS.get(raw, raw)
         state = get_state(user_id)
-        selected = list(state["data"].get("categories", []))
-        if category == "همه":
-            selected = ["همه"]
-        else:
-            selected = [item for item in selected if item != "همه"]
-            if category in selected:
-                selected.remove(category)
-            else:
-                selected.append(category)
-            if not selected:
-                selected = ["ورزش"] if locked_cats else ["همه"]
-        state["data"]["categories"] = selected
-        set_state(user_id, state["state"] or "category_select", state["data"])
+        payload = dict(state.get("data") or {})
+        channel_id = payload.get("channel_id")
+        selected = list(payload.get("categories") or [])
+        if not selected:
+            user = get_user(user_id) or {}
+            _, _, selected, _ = _channel_flags(user, channel_id)
+        if category in locked_cats:
+            await edit_message(
+                callback,
+                "این دسته با اشتراک رایگان قفل است.",
+                category_menu(selected, locked_cats),
+            )
+            return
+        selected = _toggle_categories(selected, category, locked_cats)
+        payload["categories"] = selected
+        set_state(user_id, "category_select", payload)
+        if channel_id:
+            update_categories(user_id, channel_id, selected)
         pretty = "، ".join(selected)
         await edit_message(
             callback,
             "🏷 انتخاب دسته‌بندی\n\n"
-            f"انتخاب فعلی: {pretty}",
+            f"انتخاب فعلی: {pretty}\n\n"
+            "روی هر دسته بزن تا روشن/خاموش شود.\n"
+            "بعد ذخیره را بزن.",
             category_menu(selected, locked_cats),
         )
         return
@@ -144,20 +193,20 @@ async def on_callback(callback: CallbackQuery):
         await _show_settings(callback, data.replace("emoji_", "", 1))
         return
 
-    if data == "cat_save":
+    if data == "csave" or data == "cat_save":
         state = get_state(user_id)
-        if state["state"] != "category_select":
+        payload = dict(state.get("data") or {})
+        channel_id = payload.get("channel_id")
+        categories = payload.get("categories") or ["همه"]
+        if not channel_id:
+            await edit_message(callback, "دسته‌بندی ذخیره نشد. دوباره از تنظیمات وارد شو.")
             return
-        channel_id = state["data"]["channel_id"]
-        categories = state["data"].get("categories") or ["همه"]
-        if update_categories(user_id, channel_id, categories):
-            clear_state(user_id)
-            await _show_settings(callback, channel_id)
-        else:
-            await edit_message(callback, "دسته‌بندی ذخیره نشد.")
+        update_categories(user_id, channel_id, categories)
+        clear_state(user_id)
+        await _show_settings(callback, channel_id)
         return
 
-    if data.startswith("cat_"):
+    if data.startswith("cat_") and not data.startswith("cat_select_"):
         channel_id = data.replace("cat_", "", 1)
         user = get_user(user_id)
         _, _, categories, _ = _channel_flags(user, channel_id)
@@ -166,7 +215,8 @@ async def on_callback(callback: CallbackQuery):
         await edit_message(
             callback,
             "🏷 انتخاب دسته‌بندی\n\n"
-            f"انتخاب فعلی: {pretty}",
+            f"انتخاب فعلی: {pretty}\n\n"
+            "روی هر دسته بزن تا روشن/خاموش شود.",
             category_menu(categories, locked_cats),
         )
         return
