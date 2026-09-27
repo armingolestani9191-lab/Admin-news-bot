@@ -1,25 +1,5 @@
 from client import bot
 
-
-@bot.event
-async def on_ready():
-    print("✅ Connected!")
-    print(bot.user)
-
-
-import handlers.dispatch
-
-
-def _ignore_event(fn=None):
-    def deco(func):
-        return func
-    if callable(fn):
-        return deco(fn)
-    return deco
-
-
-bot.event = _ignore_event
-
 import handlers.start
 import handlers.home
 import handlers.menu_patch
@@ -40,6 +20,26 @@ import handlers.admin_system
 import handlers.admin
 import handlers.support
 import handlers.help
+import handlers.dispatch
+
+
+@bot.event
+async def on_ready():
+    print("✅ Connected!")
+    print(bot.user)
+
+
+def _pin_router():
+    from handlers import dispatch
+
+    events = getattr(bot, "_events", None)
+    if not isinstance(events, dict):
+        return
+    events["on_message"] = dispatch.on_message
+    events["on_callback"] = dispatch.on_callback
+
+
+_pin_router()
 
 
 if __name__ == "__main__":
