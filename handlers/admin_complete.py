@@ -53,25 +53,48 @@ def users_stats_text():
     )
 
 
-def channels_stats_text():
+def channels_stats_page(page=0):
     items = all_registered_channels()
     active = sum(1 for item in items if item.get("status") == "active")
+    per_page = 30
+    total_pages = max(1, (len(items) + per_page - 1) // per_page)
+    page = max(0, min(int(page or 0), total_pages - 1))
+    start = page * per_page
     lines = [
         "📺 آمار کانال‌ها",
         "━━━━━━━━━━━━━━",
         f"📢 کل کانال‌ها: {len(items)}",
         f"🟢 فعال: {active}",
         f"🔴 متوقف: {len(items) - active}",
+        f"📄 صفحه {page + 1}/{total_pages}",
         "",
     ]
-    for index, item in enumerate(items[:20], start=1):
-        owner = item.get("owner_username") or item.get("owner_id")
-        if owner and not str(owner).startswith("@") and not str(owner).isdigit():
-            owner = "@" + owner
-        lines.append(f"{index}. {item.get('id')} — {owner}")
-    if len(items) > 20:
-        lines.append(f"\n... و {len(items) - 20} کانال دیگر")
-    return "\n".join(lines)
+    chunk = items[start:start + per_page]
+    if not chunk:
+        lines.append("هنوز کانالی ثبت نشده.")
+    else:
+        for index, item in enumerate(chunk, start=start + 1):
+            owner = item.get("owner_username") or item.get("owner_id") or item.get("owner_name")
+            if owner and not str(owner).startswith("@") and not str(owner).isdigit():
+                owner = "@" + str(owner)
+            lines.append(f"{index}. {item.get('id')}")
+            lines.append(f"└ 👤 افزوده شده توسط: {owner}")
+            lines.append("")
+    keyboard = InlineKeyboardMarkup()
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("⬅️", callback_data=f"ad_cstats_{page-1}"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton("➡️", callback_data=f"ad_cstats_{page+1}"))
+    if nav:
+        keyboard.add(*nav, row=1)
+    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_home"), row=2)
+    return "\n".join(lines), keyboard
+
+
+def channels_stats_text(page=0):
+    text, _keyboard = channels_stats_page(page)
+    return text
 
 
 def users_manage_text(page=0):
@@ -123,7 +146,7 @@ def settings_text():
 async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
     user_id = callback.from_user.id
-    if not data.startswith("ad_"):
+    if not (data.startswith("ad_") or data.startswith("channel_stats_")):
         return
     if not is_admin(user_id):
         await edit_message(callback, "🚫 این بخش فقط برای ادمین است.", home_components(user_id))
@@ -131,8 +154,14 @@ async def on_callback(callback: CallbackQuery):
     if data == "ad_ustats":
         await edit_message(callback, users_stats_text(), back_admin())
         return
-    if data == "ad_cstats":
-        await edit_message(callback, channels_stats_text(), back_admin())
+    if data == "ad_cstats" or data.startswith("ad_cstats_") or data.startswith("channel_stats_"):
+        page = 0
+        if data.startswith("ad_cstats_") and data[10:].isdigit():
+            page = int(data[10:])
+        elif data.startswith("channel_stats_") and data.split("_")[-1].isdigit():
+            page = int(data.split("_")[-1])
+        text, keyboard = channels_stats_page(page)
+        await edit_message(callback, text, keyboard)
         return
     if data == "ad_umgmt" or data.startswith("ad_umgmt_"):
         page = int(data.replace("ad_umgmt_", "")) if data.startswith("ad_umgmt_") and data[9:].isdigit() else 0
