@@ -17,7 +17,7 @@ def stats_text(report):
     clock = report["now"].strftime("%H:%M")
     lines = [
         f"📊 آمار {report['channel_id']}",
-        f"⏰ از ۰۰:۰۰ تا {clock}",
+        f"⏰ از ٠٠:٠٠ تا {clock}",
         "━━━━━━━━━━━━━━",
         f"👥 کاربرای امروز: {report['users_today']}",
         f"📅 ۷ روز گذشته: {report['users_7']}",
@@ -45,7 +45,6 @@ async def send_channel_stats(user_id, channel_id, callback):
     await edit_message(callback, text, home_components(user_id))
 
 
-@bot.event
 async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
     user_id = callback.from_user.id

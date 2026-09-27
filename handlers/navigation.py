@@ -4,7 +4,6 @@ from client import bot
 from states import clear_state
 
 
-@bot.event
 async def on_message(message: Message):
     if message.from_user is None:
         return
