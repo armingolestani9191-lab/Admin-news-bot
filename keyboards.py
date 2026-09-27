@@ -192,14 +192,14 @@ def category_menu(selected=None, locked=None):
             return f"🔒 {text}"
         return f"✅ {text}" if name in selected else text
     keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton(label("جنگ", "🚨 جنگ"), callback_data="cat_select_جنگ"), row=1)
-    keyboard.add(InlineKeyboardButton(label("آب‌وهوا", "🌬 آب‌وهوا"), callback_data="cat_select_آب‌وهوا"), row=1)
-    keyboard.add(InlineKeyboardButton(label("اقتصاد", "💵 اقتصاد"), callback_data="cat_select_اقتصاد"), row=2)
-    keyboard.add(InlineKeyboardButton(label("فناوری", "💻 فناوری"), callback_data="cat_select_فناوری"), row=2)
-    keyboard.add(InlineKeyboardButton(label("ورزش", "⚽ ورزش"), callback_data="cat_select_ورزش"), row=3)
-    keyboard.add(InlineKeyboardButton(label("سیاسی", "🏛 سیاسی"), callback_data="cat_select_سیاسی"), row=3)
-    keyboard.add(InlineKeyboardButton(label("همه", "🌍 همه دسته‌ها"), callback_data="cat_select_همه"), row=4)
-    keyboard.add(InlineKeyboardButton("💾 ذخیره دسته‌ها", callback_data="cat_save"), row=5)
+    keyboard.add(InlineKeyboardButton(label("جنگ", "🚨 جنگ"), callback_data="csel_war"), row=1)
+    keyboard.add(InlineKeyboardButton(label("آب‌وهوا", "🌬 آب‌وهوا"), callback_data="csel_weather"), row=1)
+    keyboard.add(InlineKeyboardButton(label("اقتصاد", "💵 اقتصاد"), callback_data="csel_eco"), row=2)
+    keyboard.add(InlineKeyboardButton(label("فناوری", "💻 فناوری"), callback_data="csel_tech"), row=2)
+    keyboard.add(InlineKeyboardButton(label("ورزش", "⚽ ورزش"), callback_data="csel_sport"), row=3)
+    keyboard.add(InlineKeyboardButton(label("سیاسی", "🏛 سیاسی"), callback_data="csel_pol"), row=3)
+    keyboard.add(InlineKeyboardButton(label("همه", "🌍 همه دسته‌ها"), callback_data="csel_all"), row=4)
+    keyboard.add(InlineKeyboardButton("💾 ذخیره دسته‌ها", callback_data="csave"), row=5)
     return keyboard
 
 
@@ -212,7 +212,7 @@ def send_time_menu(channel_id, locked=None):
     keyboard.add(InlineKeyboardButton(label(5, "🕔 ۵ دقیقه"), callback_data=f"stime_5_{channel_id}"), row=1)
     keyboard.add(InlineKeyboardButton("🕙 ۱۰ دقیقه", callback_data=f"stime_10_{channel_id}"), row=2)
     keyboard.add(InlineKeyboardButton("🕒 ۱۵ دقیقه", callback_data=f"stime_15_{channel_id}"), row=2)
-    keyboard.add(InlineKeyboardButton("🕞 ۳۰ دقیقه", callback_data=f"stime_30_{channel_id}"), row=3)
+    keyboard.add(InlineKeyboardButton("🕜 ۳۰ دقیقه", callback_data=f"stime_30_{channel_id}"), row=3)
     keyboard.add(InlineKeyboardButton("🕐 ۶۰ دقیقه", callback_data=f"stime_60_{channel_id}"), row=3)
     return keyboard
 
