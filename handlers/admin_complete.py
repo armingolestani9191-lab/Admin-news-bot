@@ -1,16 +1,25 @@
 from datetime import datetime
 
-from bale import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from client import bot
 from ui import edit_message
-from users import load_users
-from admin_store import is_admin, load_join_channels
-from subscription import subscription_info, CARD_NUMBER
+from users import load_users, get_user
+from admin_store import is_admin, load_join_channels, OWNER_ID
+from subscription import (
+    subscription_info,
+    get_card_number,
+    set_card_number,
+    activate_subscription,
+    clear_subscription,
+)
 from handlers import admin_panel
 from handlers.admin_panel import back_admin, all_registered_channels
 from handlers.home import home_components
 from force_join import is_force_join_enabled
+from states import set_state, clear_state, get_state
+from bans import is_banned, ban_user, unban_user
+from sender import send_message
 
 
 def admin_menu():
@@ -24,7 +33,8 @@ def admin_menu():
     keyboard.add(InlineKeyboardButton("👮 ادمین‌ها", callback_data="ad_admins"), row=6)
     keyboard.add(InlineKeyboardButton("🔒 جوین اجباری", callback_data="ad_join"), row=7)
     keyboard.add(InlineKeyboardButton("⚙️ تنظیمات ربات", callback_data="ad_set"), row=8)
-    keyboard.add(InlineKeyboardButton("🔙 منوی اصلی", callback_data="m_home"), row=9)
+    keyboard.add(InlineKeyboardButton("💳 تغییر شماره کارت", callback_data="ad_card"), row=9)
+    keyboard.add(InlineKeyboardButton("🔙 منوی اصلی", callback_data="m_home"), row=10)
     return keyboard
 
 
@@ -97,37 +107,83 @@ def channels_stats_text(page=0):
     return text
 
 
-def users_manage_text(page=0):
-    users = load_users()
+def _active_subscribers():
     rows = []
+    users = load_users()
     for user_id, user in users.items():
         if not isinstance(user, dict):
             continue
         info = subscription_info(user_id)
+        if not info["active"]:
+            continue
         username = user.get("username")
         mention = ("@" + str(username).lstrip("@")) if username else str(user_id)
-        rows.append((user_id, mention, info["label"], len(user.get("channels") or [])))
-    per_page = 12
+        rows.append((str(user_id), mention, info))
+    return rows
+
+
+def users_manage_text(page=0):
+    users = load_users()
+    rows = _active_subscribers()
+    per_page = 8
     total_pages = max(1, (len(rows) + per_page - 1) // per_page)
     page = max(0, min(page, total_pages - 1))
     chunk = rows[page * per_page:(page + 1) * per_page]
     lines = [
         "👤 مدیریت کاربران",
-        f"صفحه {page + 1}/{total_pages}",
         "━━━━━━━━━━━━━━",
+        f"👥 تعداد کل کاربران: {len(users)}",
+        f"⭐ اشتراک فعال (رایگان و پولی): {len(rows)}",
+        f"📄 صفحه {page + 1}/{total_pages}",
+        "",
+        "روی کاربر بزن تا اطلاعاتش را ببینی.",
     ]
-    for user_id, mention, label, count in chunk:
-        lines.append(f"• {mention}\n  ایدی: {user_id} | اشتراک: {label} | کانال: {count}")
     keyboard = InlineKeyboardMarkup()
+    row_i = 1
+    for user_id, mention, _info in chunk:
+        keyboard.add(InlineKeyboardButton(mention, callback_data=f"ad_uv_{user_id}"), row=row_i)
+        row_i += 1
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton("⬅️", callback_data=f"ad_umgmt_{page-1}"))
     if page < total_pages - 1:
         nav.append(InlineKeyboardButton("➡️", callback_data=f"ad_umgmt_{page+1}"))
     if nav:
-        keyboard.add(*nav, row=1)
-    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_home"), row=2)
+        keyboard.add(*nav, row=row_i)
+        row_i += 1
+    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_home"), row=row_i)
     return "\n".join(lines), keyboard
+
+
+def user_detail_view(target_id):
+    user = get_user(target_id) or {}
+    info = subscription_info(target_id)
+    username = user.get("username")
+    mention = ("@" + str(username).lstrip("@")) if username else "ندارد"
+    channels = user.get("channels") or []
+    if channels:
+        channel_lines = "\n".join(f"{index}. {item.get('id')}" for index, item in enumerate(channels, start=1))
+    else:
+        channel_lines = "ندارد"
+    banned = "بله" if is_banned(target_id) else "خیر"
+    text = (
+        "👤 اطلاعات کاربر\n"
+        "━━━━━━━━━━━━━━\n"
+        f"یوزرنیمش: {mention}\n"
+        f"ایدی عددیش: {target_id}\n"
+        f"کانالی که اد داده:\n{channel_lines}\n"
+        f"اشتراکش چند وقت مونده: {info['remaining']} روز\n"
+        f"نوع اشتراک: {info['label']}\n"
+        f"بن: {banned}"
+    )
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton("🚫 بن کاربر", callback_data=f"ad_ban_{target_id}"), row=1)
+    keyboard.add(InlineKeyboardButton("✅ آنبن کاربر", callback_data=f"ad_unban_{target_id}"), row=1)
+    keyboard.add(InlineKeyboardButton("✉️ پیام به کاربر", callback_data=f"ad_umsg_{target_id}"), row=2)
+    keyboard.add(InlineKeyboardButton("🗑 حذف اشتراک", callback_data=f"ad_usubdel_{target_id}"), row=3)
+    keyboard.add(InlineKeyboardButton("⭐ دادن اشتراک ۱۰ روز", callback_data=f"ad_usub10_{target_id}"), row=3)
+    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_umgmt"), row=4)
+    return text, keyboard
 
 
 def settings_text():
@@ -136,10 +192,17 @@ def settings_text():
     return (
         "⚙️ تنظیمات ربات\n"
         "━━━━━━━━━━━━━━\n"
-        f"💳 کارت: {CARD_NUMBER}\n"
+        f"💳 کارت: {get_card_number()}\n"
         f"🔒 جوین اجباری: {status}\n"
         f"📢 کانال‌های جوین: {len(join)}/3"
     )
+
+
+def settings_menu():
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton("💳 تغییر شماره کارت", callback_data="ad_card"), row=1)
+    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_home"), row=2)
+    return keyboard
 
 
 @bot.event
@@ -163,11 +226,89 @@ async def on_callback(callback: CallbackQuery):
         text, keyboard = channels_stats_page(page)
         await edit_message(callback, text, keyboard)
         return
-    if data == "ad_umgmt" or data.startswith("ad_umgmt_"):
+    if data == "ad_umgmt" or (data.startswith("ad_umgmt_") and data[9:].isdigit()):
         page = int(data.replace("ad_umgmt_", "")) if data.startswith("ad_umgmt_") and data[9:].isdigit() else 0
         text, keyboard = users_manage_text(page)
         await edit_message(callback, text, keyboard)
         return
+    if data.startswith("ad_uv_"):
+        target = data.replace("ad_uv_", "", 1)
+        text, keyboard = user_detail_view(target)
+        await edit_message(callback, text, keyboard)
+        return
+    if data.startswith("ad_ban_"):
+        target = data.replace("ad_ban_", "", 1)
+        if str(target) == str(OWNER_ID) or is_admin(target):
+            await edit_message(callback, "⚠️ ادمین را نمی‌شود بن کرد.", user_detail_view(target)[1])
+            return
+        ban_user(target)
+        send_message(target, "حساب شما توسط پشتیبانی بن شد.")
+        text, keyboard = user_detail_view(target)
+        await edit_message(callback, "✅ کاربر بن شد.\n\n" + text, keyboard)
+        return
+    if data.startswith("ad_unban_"):
+        target = data.replace("ad_unban_", "", 1)
+        unban_user(target)
+        send_message(
+            target,
+            "حساب شما توسط پشتیبانی آنبن شد و از الان میتونید با رعایت قوانین از ربات استفاده کنید",
+        )
+        text, keyboard = user_detail_view(target)
+        await edit_message(callback, "✅ کاربر آنبن شد.\n\n" + text, keyboard)
+        return
+    if data.startswith("ad_umsg_"):
+        target = data.replace("ad_umsg_", "", 1)
+        set_state(user_id, "admin_user_msg", {"target_id": target})
+        await edit_message(callback, "✉️ متن پیام را بفرست. فقط برای همین کاربر می‌رود.", back_admin())
+        return
+    if data.startswith("ad_usubdel_"):
+        target = data.replace("ad_usubdel_", "", 1)
+        clear_subscription(target)
+        text, keyboard = user_detail_view(target)
+        await edit_message(callback, "✅ اشتراک کاربر حذف شد.\n\n" + text, keyboard)
+        return
+    if data.startswith("ad_usub10_"):
+        target = data.replace("ad_usub10_", "", 1)
+        activate_subscription(target, "paid", 10)
+        text, keyboard = user_detail_view(target)
+        await edit_message(callback, "✅ اشتراک ۱۰ روزه برای کاربر فعال شد.\n\n" + text, keyboard)
+        return
+    if data == "ad_card":
+        set_state(user_id, "admin_card", {})
+        await edit_message(callback, "💳 شماره کارت جدید را وارد کن.\nفقط عدد کارت را بفرست.", back_admin())
+        return
     if data == "ad_set":
-        await edit_message(callback, settings_text(), back_admin())
+        await edit_message(callback, settings_text(), settings_menu())
+        return
+
+
+@bot.event
+async def on_message(message: Message):
+    if message.from_user is None:
+        return
+    user_id = message.from_user.id
+    if not is_admin(user_id):
+        return
+    state = get_state(user_id)
+    name = state.get("state")
+    text = (message.content or "").strip()
+    if name == "admin_card":
+        number = set_card_number(text)
+        clear_state(user_id)
+        if not number:
+            await message.reply("⚠️ شماره کارت درست نیست. فقط عدد کارت را بفرست.", components=settings_menu())
+            return
+        await message.reply(
+            f"✅ شماره کارت عوض شد.\n\nاز این بعد در خرید اشتراک این کارت می‌آید:\n`{number}`",
+            components=admin_menu(),
+        )
+        return
+    if name == "admin_user_msg":
+        target = (state.get("data") or {}).get("target_id")
+        clear_state(user_id)
+        if not target or not text:
+            await message.reply("⚠️ پیام ارسال نشد.", components=back_admin())
+            return
+        send_message(target, text)
+        await message.reply("✅ پیام برای کاربر ارسال شد.", components=user_detail_view(target)[1])
         return
