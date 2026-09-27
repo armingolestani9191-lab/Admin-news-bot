@@ -18,7 +18,6 @@ from users import (
 )
 from states import set_state, get_state, clear_state
 from subscription import is_free_user, FREE_ALLOWED_CATEGORIES, FREE_LOCKED_TIMES
-from once import once
 
 
 CAT_SLUGS = {
@@ -112,10 +111,7 @@ def _toggle_categories(selected, category, locked_cats):
     return selected
 
 
-@bot.event
 async def on_callback(callback: CallbackQuery):
-    if not once(callback, "channel_settings"):
-        return
     data = callback.data or ""
     user_id = callback.from_user.id
     locked_cats, locked_times = _locks(user_id)
