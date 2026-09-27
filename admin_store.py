@@ -6,8 +6,13 @@ import requests
 from config import BOT_TOKEN, USERS_FILE, FORCE_JOIN_CHANNELS
 from subscription import ADMIN_IDS
 
+try:
+    from storage import users_path
+    DATA_DIR = os.path.dirname(users_path()) or os.path.dirname(USERS_FILE) or "data"
+except Exception:
+    DATA_DIR = os.path.dirname(USERS_FILE) or "data"
+
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
-DATA_DIR = os.path.dirname(USERS_FILE) or "data"
 ADMINS_FILE = os.path.join(DATA_DIR, "admins.json")
 JOIN_FILE = os.path.join(DATA_DIR, "force_join.json")
 OWNER_ID = int(ADMIN_IDS[0]) if ADMIN_IDS else 0
@@ -82,12 +87,31 @@ def remove_admin(user_id):
     return True
 
 
+def _join_keys(item):
+    keys = set()
+    if not isinstance(item, dict):
+        item = {"username": item, "id": item}
+    for value in (item.get("username"), item.get("id")):
+        if value is None or value == "":
+            continue
+        text = str(value).strip()
+        keys.add(text.lower())
+        keys.add(text.lower().lstrip("@"))
+        if not text.startswith("@") and not text.lstrip("-").isdigit():
+            keys.add("@" + text.lower())
+    return keys
+
+
 def load_join_channels():
-    data = _load(JOIN_FILE, None)
-    if data is None:
+    if not os.path.exists(JOIN_FILE):
         data = list(FORCE_JOIN_CHANNELS or [])
         _save(JOIN_FILE, data)
+    else:
+        data = _load(JOIN_FILE, [])
+        if not isinstance(data, list):
+            data = []
     clean = []
+    seen = set()
     for item in data or []:
         if not isinstance(item, dict):
             continue
@@ -96,15 +120,61 @@ def load_join_channels():
             continue
         if not username.startswith("@") and not str(item.get("id", "")).lstrip("-").isdigit():
             username = "@" + username
-        clean.append({
+        row = {
             "id": item.get("id") or username,
-            "username": username if username.startswith("@") else username,
-        })
+            "username": username,
+        }
+        marker = tuple(sorted(_join_keys(row)))
+        if marker in seen:
+            continue
+        seen.add(marker)
+        clean.append(row)
     return clean[:3]
 
 
 def save_join_channels(items):
-    _save(JOIN_FILE, items[:3])
+    clean = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        username = str(item.get("username") or item.get("id") or "").strip()
+        if not username:
+            continue
+        clean.append({
+            "id": item.get("id") or username,
+            "username": username,
+        })
+    _save(JOIN_FILE, clean[:3])
+
+
+def add_join_channel(channel):
+    if not channel:
+        return False, "کانال پیدا نشد."
+    items = load_join_channels()
+    new_keys = _join_keys(channel)
+    if any(not _join_keys(item).isdisjoint(new_keys) for item in items):
+        return False, "این کانال قبلاً هست."
+    if len(items) >= 3:
+        return False, "سقف ۳ کانال پر است."
+    items.append({
+        "id": channel.get("id") or channel.get("username"),
+        "username": channel.get("username") or channel.get("id"),
+    })
+    save_join_channels(items)
+    return True, "اضافه شد."
+
+
+def remove_join_channel(text):
+    raw = (text or "").strip()
+    if not raw:
+        return False
+    items = load_join_channels()
+    raw_keys = _join_keys({"username": raw, "id": raw})
+    keep = [item for item in items if _join_keys(item).isdisjoint(raw_keys)]
+    if len(keep) == len(items):
+        return False
+    save_join_channels(keep)
+    return True
 
 
 def resolve_channel(username):
