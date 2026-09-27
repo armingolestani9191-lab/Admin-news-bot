@@ -27,9 +27,6 @@ async def on_ready():
     print("✅ Connected!")
     print(bot.user)
 
-@bot.event
-async def on_update(update):
-    print("Update:", update)
 
 if __name__ == "__main__":
     print("🤖 User Bot Started...")

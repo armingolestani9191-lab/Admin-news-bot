@@ -26,21 +26,27 @@ def is_user_joined(user_id):
         return cached[1]
     ok_all = True
     for channel in channels:
+        targets = []
+        username = channel.get("username")
+        channel_id = channel.get("id")
+        if username:
+            targets.append(username)
+        if channel_id and channel_id != username:
+            targets.append(channel_id)
         ok = False
-        for target in (channel.get("id"), channel.get("username")):
-            if not target:
-                continue
+        for target in targets:
             status = get_chat_member(target, user_id)
             if status in ("creator", "administrator", "member"):
                 ok = True
                 break
+            if status in ("left", "kicked", "restricted"):
+                break
         if not ok:
             ok_all = False
             break
-    _JOINED[key] = (now + (45 if ok_all else 8), ok_all)
+    _JOINED[key] = (now + (180 if ok_all else 6), ok_all)
     if len(_JOINED) > 400:
-        cutoff = now
         for item in list(_JOINED):
-            if _JOINED[item][0] <= cutoff:
+            if _JOINED[item][0] <= now:
                 _JOINED.pop(item, None)
     return ok_all
