@@ -3,7 +3,7 @@ from bale import CallbackQuery, Message, InlineKeyboardMarkup
 from client import bot
 from bans import is_banned
 from admin_store import is_admin
-from ui import edit_message
+from ui import edit_message, answer_callback
 from states import get_state
 
 
@@ -167,6 +167,7 @@ def _message_modules(user_id, text):
 
 @bot.event
 async def on_callback(callback: CallbackQuery):
+    answer_callback(callback)
     user = callback.from_user
     if user and is_banned(user.id) and not is_admin(user.id):
         await edit_message(callback, BAN_TEXT, InlineKeyboardMarkup())
