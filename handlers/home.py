@@ -119,7 +119,6 @@ async def handle_start(message: Message):
     await message.reply(home_text(user.id), components=home_components(user.id))
 
 
-@bot.event
 async def on_message(message: Message):
     if message.from_user is None:
         return
@@ -129,7 +128,6 @@ async def on_message(message: Message):
         return
 
 
-@bot.event
 async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
     user_id = callback.from_user.id
