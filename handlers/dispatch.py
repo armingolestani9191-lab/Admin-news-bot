@@ -88,7 +88,9 @@ async def _safe(handler, argument):
 def _callback_modules(data):
     mods = _load_cb()
     data = data or ""
-    if data == "check_force_join":
+    if data in ("ignore", "ad_ignore"):
+        names = ()
+    elif data == "check_force_join":
         names = ("admin_panel",)
     elif data.startswith("ad_") or data.startswith("channel_stats_"):
         names = ("admin_complete", "admin_panel")
@@ -117,7 +119,7 @@ def _callback_modules(data):
     elif data.startswith("m_") or data.startswith("pause_") or data.startswith("resume_"):
         names = ("home",)
     else:
-        names = ()
+        names = ("home", "channel_settings", "admin_panel")
     return [mods[name] for name in names]
 
 
@@ -140,21 +142,29 @@ def _message_modules(user_id, text):
         keys = ("channel_settings", "navigation")
     elif text in ("🏠 منوی اصلی", "🔙 بازگشت"):
         keys = ("navigation",)
+    elif text == "📢 کانال‌های من":
+        keys = ("channel",)
+    elif text == "👤 پروفایل":
+        keys = ("profile",)
+    elif text == "📞 پشتیبانی":
+        keys = ("support",)
+    elif text == "📖 راهنما":
+        keys = ("help",)
+    elif text in (
+        "📊 آمار کاربران",
+        "📢 آمار کانال‌ها",
+        "📰 آمار اخبار",
+        "👤 مدیریت کاربران",
+        "📺 مدیریت کانال‌ها",
+        "👮 ادمین‌ها",
+        "📨 ارسال همگانی",
+        "⚙️ تنظیمات ربات",
+        "🔒 جوین اجباری",
+        "🛠 پنل مدیریت",
+    ):
+        keys = ("admin_system", "admin_panel", "admin_complete")
     else:
-        keys = (
-            "admin_complete",
-            "admin_panel",
-            "admin_system",
-            "shop",
-            "add_channel",
-            "footer_text",
-            "comments",
-            "navigation",
-            "channel",
-            "profile",
-            "support",
-            "help",
-        )
+        keys = ("navigation",)
     return [mods[key] for key in keys]
 
 
