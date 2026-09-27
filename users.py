@@ -108,10 +108,17 @@ def user_exists(user_id):
 
 
 def add_user(user_id, first_name, username=None):
+    users = load_users()
+    user_id = str(user_id)
+    existing = users.get(user_id)
+    if existing:
+        if (not first_name or existing.get("first_name") == first_name) and (
+            not username or existing.get("username") == username
+        ):
+            return
     _acquire_lock()
     try:
         users = load_users()
-        user_id = str(user_id)
         if user_id not in users:
             users[user_id] = {
                 "first_name": first_name,
