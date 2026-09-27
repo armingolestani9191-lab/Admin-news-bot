@@ -76,8 +76,8 @@ def is_fresh(news, now=None, max_age=None):
     published = float(news.get("published") or 0)
     if published <= 0:
         return False
-    if published > now + 180:
-        published = now
+    if published > now + 120:
+        return False
     return (now - published) <= (max_age or MAX_NEWS_AGE_SECONDS)
 
 
@@ -124,7 +124,9 @@ def _fetch_one(category, feed_url):
         published = entry_published(entry, fallback=0)
         if published <= 0:
             continue
-        if published < now and (now - published) > MAX_NEWS_AGE_SECONDS:
+        if published > now + 120:
+            continue
+        if (now - published) > MAX_NEWS_AGE_SECONDS:
             continue
         items.append({
             "title": title,
@@ -171,5 +173,5 @@ def get_news(categories=None):
     ranked = _rank(all_news, now)
     if not ranked and now - _EMPTY_LOG_AT > 120:
         _EMPTY_LOG_AT = now
-        print(f"⚠️ خبر جدید نیست. فیدها: {len(feeds)} آیتم‌ها: {len(all_news)}")
+        print(f"⚠️ خبر جدید ۳۰ دقیقه‌ای نیست. فیدها: {len(feeds)} آیتم‌ها: {len(all_news)}")
     return ranked
