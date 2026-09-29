@@ -8,7 +8,10 @@ from config import DEFAULT_SEND_INTERVAL
 
 _LOCK_PATH = users_path() + ".lock"
 _CACHE = {"path": None, "mtime": None, "data": None}
-_FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "0123456789")
+_FA_DIGITS = str.maketrans(
+    "".join(chr(code) for code in list(range(0x06F0, 0x06FA)) + list(range(0x0660, 0x066A))),
+    "0123456789" * 2,
+)
 
 
 def _candidate_paths():
