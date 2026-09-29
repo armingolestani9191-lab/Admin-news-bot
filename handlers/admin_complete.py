@@ -4,7 +4,7 @@ from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardBut
 
 from client import bot
 from ui import edit_message
-from users import load_users, get_user
+from users import load_users, get_user, search_users
 from admin_store import is_admin, load_join_channels, OWNER_ID
 from subscription import (
     subscription_info,
@@ -42,7 +42,7 @@ admin_panel.admin_menu = admin_menu
 
 
 def users_stats_text():
-    users = load_users()
+    users = load_users(force=True)
     today = datetime.utcnow().strftime("%Y-%m-%d")
     today_users = 0
     active_sub = 0
@@ -109,7 +109,7 @@ def channels_stats_text(page=0):
 
 def _user_rows():
     rows = []
-    users = load_users()
+    users = load_users(force=True)
     for user_id, user in users.items():
         if not isinstance(user, dict):
             continue
@@ -122,28 +122,11 @@ def _user_rows():
 
 
 def find_user_query(text):
-    raw = (text or "").strip().lstrip("@")
-    if not raw:
-        return None
-    users = load_users()
-    if raw in users:
-        return raw
-    if raw.isdigit():
-        number = str(int(raw))
-        if number in users:
-            return number
-        if raw in users:
-            return raw
-    needle = raw.lower()
-    for user_id, user in users.items():
-        username = str((user or {}).get("username") or "").lstrip("@").lower()
-        if username and username == needle:
-            return str(user_id)
-    return None
+    return search_users(text)
 
 
 def users_manage_text(page=0):
-    users = load_users()
+    users = load_users(force=True)
     rows = _user_rows()
     active_count = sum(1 for _uid, _mention, info in rows if info["active"])
     per_page = 8
@@ -188,7 +171,7 @@ def users_manage_text(page=0):
 
 
 def user_detail_view(target_id):
-    user = get_user(target_id)
+    user = get_user(target_id, force=True)
     if not user:
         keyboard = InlineKeyboardMarkup()
         keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="ad_umgmt"), row=1)
