@@ -6,12 +6,22 @@ from admin_store import is_admin
 from ui import edit_message, answer_callback
 from states import get_state
 from once import once
+from users import add_user
 
 
 BAN_TEXT = "حساب شما توسط پشتیبانی بن شد."
 
 _CB = None
 _MSG = None
+
+
+def _touch_user(user):
+    if user is None:
+        return
+    try:
+        add_user(user.id, getattr(user, "first_name", None), getattr(user, "username", None))
+    except Exception:
+        pass
 
 
 def _load_cb():
@@ -174,6 +184,7 @@ async def on_callback(callback: CallbackQuery):
         return
     answer_callback(callback)
     user = callback.from_user
+    _touch_user(user)
     if user and is_banned(user.id) and not is_admin(user.id):
         await edit_message(callback, BAN_TEXT, InlineKeyboardMarkup())
         return
@@ -190,6 +201,7 @@ async def on_message(message: Message):
         return
     if message.from_user is None:
         return
+    _touch_user(message.from_user)
     user_id = message.from_user.id
     if is_banned(user_id) and not is_admin(user_id):
         await message.reply(BAN_TEXT)
