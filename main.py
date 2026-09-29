@@ -3,8 +3,8 @@ import time
 from config import DEFAULT_SEND_INTERVAL, FORBIDDEN_COOLDOWN, MAX_NEWS_AGE_SECONDS, PREFER_NEWS_AGE_SECONDS
 from rss_reader import get_news, is_fresh
 from storage import is_news_sent, mark_news_sent
-from users import update_last_send, update_categories
-from sender import send_message, send_photo, edit_message_text
+from users import update_last_send
+from sender import send_message, send_photo
 from utils import add_emoji
 from category_engine import detect_category_advanced, news_matches_channel
 from ai import translate_news
@@ -13,6 +13,7 @@ from commenter import extract_message_id, post_comment, remember_post
 from news_targets import active_news_channels
 from prices import (
     PRICE_CATEGORIES,
+    fetch_current,
     format_price_board,
     news_categories_only,
     normalize_categories,
@@ -82,14 +83,13 @@ def can_send_price(channel, kind):
     return (time.time() - last) >= _price_wait_seconds(channel)
 
 
-def remember_price(channel, kind, message_id):
+def remember_price(channel, kind):
     channel_id = str(channel["id"])
     bucket = _PRICE_STATE.setdefault(channel_id, {})
-    bucket[kind] = {"at": time.time(), "mid": message_id}
+    bucket[kind] = {"at": time.time()}
     try:
         from users import _patch_channel
         _patch_channel(channel.get("user_id"), channel["id"], {
-            f"price_msg_{kind}": message_id,
             f"price_at_{kind}": time.time(),
         })
     except Exception:
@@ -97,16 +97,11 @@ def remember_price(channel, kind, message_id):
 
 
 def send_price_to_channel(channel, kind):
+    fetch_current(force=True)
     text = format_price_board(kind)
     footer = (channel.get("footer_text") or "").strip()
     if footer:
         text = f"{text}\n{footer}"
-    channel_id = str(channel["id"])
-    mid = (_PRICE_STATE.get(channel_id, {}).get(kind) or {}).get("mid") or channel.get(f"price_msg_{kind}")
-    if mid:
-        result = edit_message_text(channel["id"], mid, text)
-        if result.get("ok"):
-            return result
     return send_message(channel["id"], text)
 
 
@@ -185,12 +180,12 @@ def handle_prices(channel):
         if not result.get("ok"):
             print(f"❌ لیست قیمت نرفت: {channel['id']} {kind}")
             continue
-        remember_price(channel, kind, result.get("message_id"))
+        remember_price(channel, kind)
         try:
             record_message(channel["id"])
         except Exception:
             pass
-        print(f"✅ لیست {kind} برای {channel['id']} بروز شد")
+        print(f"✅ لیست {kind} برای {channel['id']} ارسال شد")
 
 
 def run():
