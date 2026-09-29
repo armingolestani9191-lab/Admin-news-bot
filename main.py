@@ -101,7 +101,7 @@ def send_price_to_channel(channel, kind):
     text = format_price_board(kind)
     footer = (channel.get("footer_text") or "").strip()
     if footer:
-        text = f"{text}\n{footer}"
+        text += f"\n\n{footer}"
     return send_message(channel["id"], text)
 
 
