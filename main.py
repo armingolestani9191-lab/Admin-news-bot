@@ -3,20 +3,28 @@ import time
 from config import DEFAULT_SEND_INTERVAL, FORBIDDEN_COOLDOWN, MAX_NEWS_AGE_SECONDS, PREFER_NEWS_AGE_SECONDS
 from rss_reader import get_news, is_fresh
 from storage import is_news_sent, mark_news_sent
-from users import update_last_send
-from sender import send_message, send_photo
+from users import update_last_send, update_categories
+from sender import send_message, send_photo, edit_message_text
 from utils import add_emoji
 from category_engine import detect_category_advanced, news_matches_channel
 from ai import translate_news
 from analytics import record_message, snapshot_members
 from commenter import extract_message_id, post_comment, remember_post
 from news_targets import active_news_channels
+from prices import (
+    PRICE_CATEGORIES,
+    format_price_board,
+    news_categories_only,
+    normalize_categories,
+    wants_price,
+)
 
 
 CHECK_INTERVAL = 10
 _FORBIDDEN_UNTIL = {}
 _LAST_EMPTY = 0
 _LAST_SNAP = 0
+_PRICE_STATE = {}
 
 
 def get_all_channels():
@@ -26,7 +34,7 @@ def get_all_channels():
 def needed_categories(channels):
     selected = set()
     for channel in channels:
-        selected.update(channel.get("categories") or ["همه"])
+        selected.update(news_categories_only(channel.get("categories") or ["همه"]))
     return list(selected)
 
 
@@ -59,8 +67,53 @@ def can_send(channel):
     return (now - last_send) >= wait_minutes * 60
 
 
+def _price_wait_seconds(channel):
+    minutes = int(channel.get("interval") or DEFAULT_SEND_INTERVAL or 1)
+    return max(30, minutes * 60)
+
+
+def can_send_price(channel, kind):
+    channel_id = str(channel["id"])
+    until = _FORBIDDEN_UNTIL.get(channel["id"], 0)
+    if until > time.time():
+        return False
+    state = _PRICE_STATE.get(channel_id, {}).get(kind) or {}
+    last = float(state.get("at") or channel.get(f"price_at_{kind}") or 0)
+    return (time.time() - last) >= _price_wait_seconds(channel)
+
+
+def remember_price(channel, kind, message_id):
+    channel_id = str(channel["id"])
+    bucket = _PRICE_STATE.setdefault(channel_id, {})
+    bucket[kind] = {"at": time.time(), "mid": message_id}
+    try:
+        from users import _patch_channel
+        _patch_channel(channel.get("user_id"), channel["id"], {
+            f"price_msg_{kind}": message_id,
+            f"price_at_{kind}": time.time(),
+        })
+    except Exception:
+        pass
+
+
+def send_price_to_channel(channel, kind):
+    text = format_price_board(kind)
+    footer = (channel.get("footer_text") or "").strip()
+    if footer:
+        text = f"{text}\n{footer}"
+    channel_id = str(channel["id"])
+    mid = (_PRICE_STATE.get(channel_id, {}).get(kind) or {}).get("mid") or channel.get(f"price_msg_{kind}")
+    if mid:
+        result = edit_message_text(channel["id"], mid, text)
+        if result.get("ok"):
+            return result
+    return send_message(channel["id"], text)
+
+
 def pick_news_for_channel(channel, news_list):
-    categories = channel.get("categories") or ["همه"]
+    categories = news_categories_only(channel.get("categories") or ["همه"])
+    if not categories:
+        return None
     unused = []
     for item in news_list:
         link = (item.get("link") or "").strip()
@@ -114,6 +167,32 @@ def mark_forbidden(channel_id):
     print(f"⏰ {channel_id} به خاطر 403 برای {FORBIDDEN_COOLDOWN // 60} دقیقه نادیده شد.")
 
 
+def handle_prices(channel):
+    categories = normalize_categories(channel.get("categories") or ["همه"])
+    for kind in PRICE_CATEGORIES:
+        if not wants_price(categories, kind):
+            continue
+        if not can_send_price(channel, kind):
+            continue
+        try:
+            result = send_price_to_channel(channel, kind)
+        except Exception as error:
+            print("❌ خطا در ارسال قیمت:", error)
+            continue
+        if result.get("forbidden"):
+            mark_forbidden(channel["id"])
+            return
+        if not result.get("ok"):
+            print(f"❌ لیست قیمت نرفت: {channel['id']} {kind}")
+            continue
+        remember_price(channel, kind, result.get("message_id"))
+        try:
+            record_message(channel["id"])
+        except Exception:
+            pass
+        print(f"✅ لیست {kind} برای {channel['id']} بروز شد")
+
+
 def run():
     global _LAST_EMPTY, _LAST_SNAP
     print("🚀 AutoNewsBot MultiChannel Started...")
@@ -135,14 +214,13 @@ def run():
                     except Exception:
                         pass
                 _LAST_SNAP = now
+            for channel in channels:
+                handle_prices(channel)
             news_list = get_news(needed_categories(channels))
-            if not news_list:
-                time.sleep(CHECK_INTERVAL)
-                continue
             for channel in channels:
                 if not can_send(channel):
                     continue
-                latest_news = pick_news_for_channel(channel, news_list)
+                latest_news = pick_news_for_channel(channel, news_list or [])
                 if not latest_news:
                     continue
                 try:
