@@ -10,6 +10,49 @@ _LOCK_PATH = users_path() + ".lock"
 _CACHE = {"path": None, "mtime": None, "data": None}
 
 
+def _candidate_paths():
+    paths = []
+    for item in (users_path(), os.path.join("data", "users.json"), os.path.join("Data", "users.json")):
+        if item and item not in paths:
+            paths.append(item)
+    return paths
+
+
+def _read_users_file(path):
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+        return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _prefer_user(left, right):
+    if not isinstance(left, dict):
+        return right if isinstance(right, dict) else {}
+    if not isinstance(right, dict):
+        return left
+    left_sub = (left.get("subscription") or {}).get("expire") or ""
+    right_sub = (right.get("subscription") or {}).get("expire") or ""
+    if right_sub > left_sub:
+        chosen = dict(left)
+        chosen.update(right)
+        if left.get("channels") and not right.get("channels"):
+            chosen["channels"] = left.get("channels")
+        return chosen
+    chosen = dict(right)
+    chosen.update(left)
+    if right.get("channels") and not left.get("channels"):
+        chosen["channels"] = right.get("channels")
+    if right.get("free_claimed") or left.get("free_claimed"):
+        chosen["free_claimed"] = True
+    if right_sub and not left_sub:
+        chosen["subscription"] = right.get("subscription")
+    return chosen
+
+
 def _acquire_lock():
     os.makedirs(os.path.dirname(users_path()) or ".", exist_ok=True)
     for _ in range(40):
@@ -46,32 +89,35 @@ def _remember(path, users):
     return users
 
 
-def load_users():
+def load_users(force=False):
     path = users_path()
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
+    if not force:
+        try:
+            mtime = os.path.getmtime(path) if os.path.exists(path) else None
+        except OSError:
+            mtime = None
+        if (
+            _CACHE["data"] is not None
+            and _CACHE["path"] == path
+            and _CACHE["mtime"] == mtime
+        ):
+            return _CACHE["data"]
+    merged = {}
+    for candidate in _candidate_paths():
+        raw = _read_users_file(candidate)
+        for user_id, user in raw.items():
+            key = str(user_id)
+            if key in merged:
+                merged[key] = _prefer_user(merged[key], user if isinstance(user, dict) else {})
+            else:
+                merged[key] = user if isinstance(user, dict) else {}
     if not os.path.exists(path):
         with open(path, "w", encoding="utf-8") as file:
-            json.dump({}, file, ensure_ascii=False, indent=4)
-        return _remember(path, {})
-    try:
-        mtime = os.path.getmtime(path)
-    except OSError:
-        mtime = None
-    if (
-        _CACHE["data"] is not None
-        and _CACHE["path"] == path
-        and _CACHE["mtime"] == mtime
-    ):
-        return _CACHE["data"]
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            users = json.load(file)
-            users = users if isinstance(users, dict) else {}
-    except (json.JSONDecodeError, OSError):
-        users = {}
-    return _remember(path, users)
+            json.dump(merged, file, ensure_ascii=False, indent=4)
+    return _remember(path, merged)
 
 
 def save_users(users):
@@ -79,22 +125,73 @@ def save_users(users):
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as file:
-        json.dump(users, file, ensure_ascii=False, indent=4)
-    os.replace(tmp, path)
-    _remember(path, users)
+    clean = {}
+    for user_id, user in (users or {}).items():
+        clean[str(user_id)] = user if isinstance(user, dict) else {}
+    targets = [path]
+    for candidate in _candidate_paths():
+        if candidate != path and os.path.exists(os.path.dirname(candidate) or "."):
+            if candidate not in targets:
+                targets.append(candidate)
+    for target in targets:
+        folder = os.path.dirname(target)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        tmp = target + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as file:
+            json.dump(clean, file, ensure_ascii=False, indent=4)
+        os.replace(tmp, target)
+    _remember(path, clean)
+
+
+def _blank_user(first_name="", username=None):
+    return {
+        "first_name": first_name or "",
+        "username": username,
+        "join_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        "wallet": 0,
+        "channels": [],
+        "subscription": {"type": None, "expire": None, "total_days": 0},
+        "free_claimed": False,
+        "invited_by": None,
+        "invite_count": 0,
+        "is_admin": False,
+    }
+
+
+def ensure_user(user_id, first_name="", username=None):
+    user_id = str(user_id)
+    _acquire_lock()
+    try:
+        users = load_users(force=True)
+        if user_id not in users or not isinstance(users.get(user_id), dict):
+            users[user_id] = _blank_user(first_name, username)
+            save_users(users)
+        else:
+            changed = False
+            current = users[user_id]
+            if first_name and current.get("first_name") != first_name:
+                current["first_name"] = first_name
+                changed = True
+            if username and current.get("username") != username:
+                current["username"] = username
+                changed = True
+            if changed:
+                save_users(users)
+        return users[user_id]
+    finally:
+        _release_lock()
 
 
 def _patch_channel(user_id, channel_id, updates):
     _acquire_lock()
     try:
-        users = load_users()
+        users = load_users(force=True)
         user_id = str(user_id)
         if user_id not in users:
-            return False
+            users[user_id] = _blank_user()
         target = str(channel_id or "").lower()
-        for channel in users[user_id].get("channels", []):
+        for channel in users[user_id].setdefault("channels", []):
             if str(channel.get("id") or "").lower() == target:
                 channel.update(updates)
                 save_users(users)
@@ -109,43 +206,7 @@ def user_exists(user_id):
 
 
 def add_user(user_id, first_name, username=None):
-    users = load_users()
-    user_id = str(user_id)
-    existing = users.get(user_id)
-    if existing:
-        if (not first_name or existing.get("first_name") == first_name) and (
-            not username or existing.get("username") == username
-        ):
-            return
-    _acquire_lock()
-    try:
-        users = load_users()
-        if user_id not in users:
-            users[user_id] = {
-                "first_name": first_name,
-                "username": username,
-                "join_date": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
-                "wallet": 0,
-                "channels": [],
-                "subscription": {"type": None, "expire": None, "total_days": 0},
-                "free_claimed": False,
-                "invited_by": None,
-                "invite_count": 0,
-                "is_admin": False,
-            }
-            save_users(users)
-        else:
-            changed = False
-            if first_name and users[user_id].get("first_name") != first_name:
-                users[user_id]["first_name"] = first_name
-                changed = True
-            if username and users[user_id].get("username") != username:
-                users[user_id]["username"] = username
-                changed = True
-            if changed:
-                save_users(users)
-    finally:
-        _release_lock()
+    ensure_user(user_id, first_name, username)
 
 
 def get_user(user_id):
@@ -155,11 +216,15 @@ def get_user(user_id):
 def update_user(user_id, data):
     _acquire_lock()
     try:
-        users = load_users()
+        users = load_users(force=True)
         user_id = str(user_id)
-        if user_id in users:
+        if user_id not in users or not isinstance(users.get(user_id), dict):
+            users[user_id] = _blank_user()
+        if isinstance(data, dict):
             users[user_id].update(data)
             save_users(users)
+            return True
+        return False
     finally:
         _release_lock()
 
@@ -169,10 +234,10 @@ def add_channel(user_id, channel, max_channels=3):
     channel = normalize_channel_id(channel) or channel
     _acquire_lock()
     try:
-        users = load_users()
+        users = load_users(force=True)
         user_id = str(user_id)
         if user_id not in users:
-            return False
+            users[user_id] = _blank_user()
         channels = users[user_id].setdefault("channels", [])
         if len(channels) >= int(max_channels or 0):
             return False
@@ -202,7 +267,7 @@ def add_channel(user_id, channel, max_channels=3):
 def delete_channel(user_id, channel_id):
     _acquire_lock()
     try:
-        users = load_users()
+        users = load_users(force=True)
         user_id = str(user_id)
         if user_id not in users:
             return False
@@ -225,7 +290,7 @@ def set_channel_status(user_id, channel_id, status):
 def _toggle_flag(user_id, channel_id, key, default=True):
     _acquire_lock()
     try:
-        users = load_users()
+        users = load_users(force=True)
         user_id = str(user_id)
         target = str(channel_id or "").lower()
         if user_id not in users:

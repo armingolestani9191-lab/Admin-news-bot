@@ -10,7 +10,7 @@ except Exception:
     TEHRAN = None
 
 from storage import users_path
-from users import get_user, update_user
+from users import ensure_user, get_user, update_user
 
 
 PLANS = {
@@ -111,34 +111,42 @@ def parse_expire(value):
 def subscription_info(user_id):
     user = get_user(user_id) or {}
     sub = user.get("subscription") or {}
-    kind = sub.get("type") or "none"
+    kind = str(sub.get("type") or "none").strip().lower() or "none"
     expire = parse_expire(sub.get("expire"))
     total = int(sub.get("total_days") or 0)
     remaining = 0
     active = False
-    if expire:
-        remaining = max(0, (expire - today_tehran()).days)
-        active = remaining > 0 or expire >= today_tehran()
-        if expire >= today_tehran() and remaining == 0:
+    if expire and expire >= today_tehran():
+        remaining = (expire - today_tehran()).days
+        if remaining <= 0:
             remaining = 1
-        if expire < today_tehran():
-            active = False
-            remaining = 0
-            kind = "expired"
-    if kind in (None, "none", "") and not active:
-        kind = "none"
+        active = True
+    elif expire and expire < today_tehran():
+        kind = "expired"
+        remaining = 0
+        active = False
+    if kind in (None, "none", "", "expired") and not active:
+        kind = "none" if not expire else "expired"
+    if not active:
+        kind = "none" if kind == "none" else "expired"
+        remaining = 0
+    label = "ندارد"
+    if active and kind == "free":
+        label = "رایگان"
+    elif active:
+        label = "پولی"
     return {
         "type": kind if active else ("none" if kind == "none" else "expired"),
         "active": active,
         "expire": expire.isoformat() if expire else None,
-        "remaining": remaining if active else 0,
+        "remaining": remaining,
         "total": total or remaining,
-        "label": "رایگان" if kind == "free" and active else ("پولی" if active else "ندارد"),
+        "label": label,
     }
 
 
 def has_subscription(user_id):
-    return subscription_info(user_id)["active"]
+    return bool(subscription_info(user_id)["active"])
 
 
 def is_free_user(user_id):
@@ -152,27 +160,44 @@ def max_channels_for(user_id):
     return FREE_MAX_CHANNELS if is_free_user(user_id) else PAID_MAX_CHANNELS
 
 
-def activate_subscription(user_id, kind, days):
-    expire = today_tehran() + timedelta(days=int(days))
-    update_user(user_id, {
+def activate_subscription(user_id, kind, days, extra=None):
+    ensure_user(user_id)
+    expire = today_tehran() + timedelta(days=max(1, int(days)))
+    payload = {
         "subscription": {
             "type": kind,
             "expire": expire.isoformat(),
             "total_days": int(days),
         }
-    })
-    return True
+    }
+    if isinstance(extra, dict):
+        payload.update(extra)
+    return bool(update_user(user_id, payload))
+
+
+def claim_free_subscription(user_id, first_name="", username=None):
+    ensure_user(user_id, first_name, username)
+    info = subscription_info(user_id)
+    user = get_user(user_id) or {}
+    if info["active"]:
+        return False, "already"
+    if user.get("free_claimed"):
+        return False, "claimed"
+    ok = activate_subscription(user_id, "free", FREE_DAYS, {"free_claimed": True})
+    if not ok:
+        return False, "save"
+    return True, FREE_DAYS
 
 
 def clear_subscription(user_id):
-    update_user(user_id, {
+    ensure_user(user_id)
+    return bool(update_user(user_id, {
         "subscription": {
             "type": None,
             "expire": None,
             "total_days": 0,
         }
-    })
-    return True
+    }))
 
 
 def create_license(days):
