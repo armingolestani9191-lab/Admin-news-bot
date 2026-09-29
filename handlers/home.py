@@ -4,7 +4,7 @@ from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardBut
 
 from client import bot
 from ui import edit_message
-from users import get_user, add_user, user_exists, set_channel_status, update_user
+from users import get_user, add_user, set_channel_status
 from keyboards import (
     home_inline_menu,
     channel_inline_menu,
@@ -16,7 +16,7 @@ from subscription import (
     subscription_info,
     has_subscription,
     max_channels_for,
-    activate_subscription,
+    claim_free_subscription,
     FREE_DAYS,
 )
 from force_join import is_force_join_enabled, is_user_joined
@@ -40,6 +40,13 @@ def _need_sub_text():
         "🎁 اشتراک رایگان ۳ روزه\n"
         "💳 خرید اشتراک"
     )
+
+
+def _remember_user(source):
+    user = getattr(source, "from_user", None)
+    if user is None:
+        return
+    add_user(user.id, getattr(user, "first_name", None), getattr(user, "username", None))
 
 
 def home_text(user_id):
@@ -79,6 +86,7 @@ def home_components(user_id):
 
 
 async def show_home(target, user_id, reply=False):
+    _remember_user(target)
     text = home_text(user_id)
     components = home_components(user_id)
     if reply and callable(getattr(target, "reply", None)):
@@ -99,7 +107,7 @@ async def handle_start(message: Message):
     key = _start_key(message)
     now = time.time()
     last = _START_SEEN.get(key, 0)
-    if now - last < 8:
+    if now - last < 1.2:
         return
     _START_SEEN[key] = now
     if len(_START_SEEN) > 300:
@@ -131,6 +139,7 @@ async def on_message(message: Message):
 async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
     user_id = callback.from_user.id
+    _remember_user(callback)
     user = get_user(user_id) or {}
     channels = user.get("channels") or []
 
@@ -166,7 +175,7 @@ async def on_callback(callback: CallbackQuery):
             await edit_message(callback, f"🛑 سقف کانال اشتراک شما {limit} تاست.\nبرای سقف بیشتر، اشتراک پولی بخر.", home_components(user_id))
             return
         set_state(user_id, "add_channel", {})
-        await edit_message(callback, "➕ آیدی کانال را بفرست.\n\nمثال: @mychannel\n\nربات باید در کانال ادمین باشد.", back_only())
+        await edit_message(callback, "➕ آیدی کانال را بفرست.\n\nمثال: @mychannel\n\ربات باید در کانال ادمین باشد.", back_only())
         return
 
     if data == "m_pause":
@@ -227,15 +236,21 @@ async def on_callback(callback: CallbackQuery):
         return
 
     if data == "m_free":
-        if has_subscription(user_id):
+        ok, result = claim_free_subscription(
+            user_id,
+            getattr(callback.from_user, "first_name", None),
+            getattr(callback.from_user, "username", None),
+        )
+        if result == "already":
             await edit_message(callback, "✅ همین حالا اشتراک فعال داری.", home_components(user_id))
             return
-        if user.get("free_claimed"):
+        if result == "claimed":
             await edit_message(callback, "🎁 اشتراک رایگان قبلاً گرفته شده.", home_components(user_id))
             return
-        activate_subscription(user_id, "free", FREE_DAYS)
-        update_user(user_id, {"free_claimed": True})
-        await edit_message(callback, f"🎉 اشتراک رایگان {FREE_DAYS} روزه فعال شد", home_components(user_id))
+        if not ok:
+            await edit_message(callback, "⚠️ اشتراک ذخیره نشد. دوباره بزن.", home_components(user_id))
+            return
+        await show_home(callback, user_id)
         return
 
     if data == "m_support":
