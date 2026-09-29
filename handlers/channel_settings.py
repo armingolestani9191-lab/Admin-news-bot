@@ -18,19 +18,24 @@ from users import (
 )
 from states import set_state, get_state, clear_state
 from subscription import is_free_user, FREE_ALLOWED_CATEGORIES, FREE_LOCKED_TIMES
+from prices import normalize_categories
 
 
 CAT_SLUGS = {
     "war": "جنگ",
     "weather": "آب‌وهوا",
-    "eco": "اقتصاد",
+    "eco": "طلا و ارز",
+    "gold": "طلا و ارز",
+    "crypto": "ارز دیجیتال",
     "tech": "فناوری",
     "sport": "ورزش",
     "pol": "سیاسی",
     "all": "همه",
     "جنگ": "جنگ",
     "آب‌وهوا": "آب‌وهوا",
-    "اقتصاد": "اقتصاد",
+    "اقتصاد": "طلا و ارز",
+    "طلا و ارز": "طلا و ارز",
+    "ارز دیجیتال": "ارز دیجیتال",
     "فناوری": "فناوری",
     "ورزش": "ورزش",
     "سیاسی": "سیاسی",
@@ -40,7 +45,7 @@ CAT_SLUGS = {
 
 def _locks(user_id):
     if is_free_user(user_id):
-        locked_cats = [name for name in ("جنگ", "اقتصاد", "فناوری", "سیاسی", "همه") if name not in FREE_ALLOWED_CATEGORIES]
+        locked_cats = [name for name in ("جنگ", "طلا و ارز", "ارز دیجیتال", "فناوری", "سیاسی", "همه") if name not in FREE_ALLOWED_CATEGORIES]
         return locked_cats, FREE_LOCKED_TIMES
     return [], set()
 
@@ -60,7 +65,7 @@ def _channel_flags(user, channel_id):
         if _same_channel(channel.get("id"), channel_id):
             send_image = channel.get("send_image", True)
             show_emoji = channel.get("show_emoji", True)
-            categories = list(channel.get("categories") or ["همه"])
+            categories = normalize_categories(channel.get("categories") or ["همه"])
             interval = channel.get("interval", 10)
             break
     if "همه" in categories and len(categories) > 1:
@@ -126,6 +131,7 @@ async def on_callback(callback: CallbackQuery):
         if not selected:
             user = get_user(user_id) or {}
             _, _, selected, _ = _channel_flags(user, channel_id)
+        selected = normalize_categories(selected)
         if category in locked_cats:
             await edit_message(
                 callback,
@@ -193,7 +199,7 @@ async def on_callback(callback: CallbackQuery):
         state = get_state(user_id)
         payload = dict(state.get("data") or {})
         channel_id = payload.get("channel_id")
-        categories = payload.get("categories") or ["همه"]
+        categories = normalize_categories(payload.get("categories") or ["همه"])
         if not channel_id:
             await edit_message(callback, "دسته‌بندی ذخیره نشد. دوباره از تنظیمات وارد شو.")
             return
