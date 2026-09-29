@@ -102,26 +102,28 @@ def save_payments(data):
 def parse_expire(value):
     if not value:
         return None
+    text = str(value).strip()[:10]
     try:
-        return date.fromisoformat(str(value)[:10])
+        return date.fromisoformat(text)
     except Exception:
         return None
 
 
 def subscription_info(user_id):
-    user = get_user(user_id) or {}
-    sub = user.get("subscription") or {}
+    user = get_user(user_id, force=True) or {}
+    sub = user.get("subscription") if isinstance(user.get("subscription"), dict) else {}
     kind = str(sub.get("type") or "none").strip().lower() or "none"
-    expire = parse_expire(sub.get("expire"))
+    expire = parse_expire(sub.get("expire") or sub.get("expires") or sub.get("expire_date"))
     total = int(sub.get("total_days") or 0)
     remaining = 0
     active = False
-    if expire and expire >= today_tehran():
-        remaining = (expire - today_tehran()).days
+    today = today_tehran()
+    if expire and expire >= today:
+        remaining = (expire - today).days
         if remaining <= 0:
             remaining = 1
         active = True
-    elif expire and expire < today_tehran():
+    elif expire and expire < today:
         kind = "expired"
         remaining = 0
         active = False
@@ -178,7 +180,7 @@ def activate_subscription(user_id, kind, days, extra=None):
 def claim_free_subscription(user_id, first_name="", username=None):
     ensure_user(user_id, first_name, username)
     info = subscription_info(user_id)
-    user = get_user(user_id) or {}
+    user = get_user(user_id, force=True) or {}
     if info["active"]:
         return False, "already"
     if user.get("free_claimed"):
