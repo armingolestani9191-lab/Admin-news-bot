@@ -1,6 +1,6 @@
 # ==========================
 # AutoNewsBot Launcher
-# Version 1.3
+# Version 1.4
 # ==========================
 
 import os
@@ -21,7 +21,7 @@ def start_process(title, script):
 
 
 if __name__ == "__main__":
-    print("🚀 Starting AutoNewsBot System...")
+    print("🚀 Starting AutoNewsBot System v1.4...")
     processes = {
         "User Bot": start_process("User Bot", "bot.py"),
         "News Engine": start_process("News Engine", "main.py"),
