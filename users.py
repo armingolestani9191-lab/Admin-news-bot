@@ -8,6 +8,7 @@ from config import DEFAULT_SEND_INTERVAL
 
 _LOCK_PATH = users_path() + ".lock"
 _CACHE = {"path": None, "mtime": None, "data": None}
+_FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "0123456789")
 
 
 def _candidate_paths():
@@ -29,45 +30,58 @@ def _read_users_file(path):
         return {}
 
 
+def _sub_expire(user):
+    if not isinstance(user, dict):
+        return ""
+    sub = user.get("subscription")
+    if not isinstance(sub, dict):
+        return ""
+    return str(sub.get("expire") or sub.get("expires") or sub.get("expire_date") or "")[:10]
+
+
 def _prefer_user(left, right):
     if not isinstance(left, dict):
         return right if isinstance(right, dict) else {}
     if not isinstance(right, dict):
         return left
-    left_sub = (left.get("subscription") or {}).get("expire") or ""
-    right_sub = (right.get("subscription") or {}).get("expire") or ""
-    if right_sub > left_sub:
-        chosen = dict(left)
-        chosen.update(right)
-        if left.get("channels") and not right.get("channels"):
-            chosen["channels"] = left.get("channels")
-        return chosen
-    chosen = dict(right)
-    chosen.update(left)
-    if right.get("channels") and not left.get("channels"):
-        chosen["channels"] = right.get("channels")
-    if right.get("free_claimed") or left.get("free_claimed"):
-        chosen["free_claimed"] = True
-    if right_sub and not left_sub:
+    chosen = dict(left)
+    for key, value in right.items():
+        if key in ("subscription", "channels", "free_claimed"):
+            continue
+        if value not in (None, "", [], {}) or key not in chosen:
+            chosen[key] = value
+    left_exp = _sub_expire(left)
+    right_exp = _sub_expire(right)
+    if right_exp > left_exp:
         chosen["subscription"] = right.get("subscription")
+    elif left_exp:
+        chosen["subscription"] = left.get("subscription")
+    elif isinstance(right.get("subscription"), dict):
+        chosen["subscription"] = right.get("subscription")
+    elif isinstance(left.get("subscription"), dict):
+        chosen["subscription"] = left.get("subscription")
+    left_channels = left.get("channels") if isinstance(left.get("channels"), list) else []
+    right_channels = right.get("channels") if isinstance(right.get("channels"), list) else []
+    chosen["channels"] = right_channels if len(right_channels) > len(left_channels) else left_channels
+    chosen["free_claimed"] = bool(left.get("free_claimed") or right.get("free_claimed"))
     return chosen
 
 
 def _acquire_lock():
     os.makedirs(os.path.dirname(users_path()) or ".", exist_ok=True)
-    for _ in range(40):
+    for _ in range(80):
         try:
             fd = os.open(_LOCK_PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.close(fd)
             return True
         except FileExistsError:
             try:
-                if time.time() - os.path.getmtime(_LOCK_PATH) > 4:
+                if time.time() - os.path.getmtime(_LOCK_PATH) > 8:
                     os.remove(_LOCK_PATH)
                     continue
             except OSError:
                 pass
-            time.sleep(0.01)
+            time.sleep(0.02)
     return False
 
 
@@ -209,8 +223,40 @@ def add_user(user_id, first_name, username=None):
     ensure_user(user_id, first_name, username)
 
 
-def get_user(user_id):
-    return load_users().get(str(user_id))
+def get_user(user_id, force=False):
+    return load_users(force=force).get(str(user_id))
+
+
+def search_users(query):
+    raw = str(query or "").strip().lstrip("@").translate(_FA_DIGITS)
+    if not raw:
+        return None
+    users = load_users(force=True)
+    if raw in users:
+        return raw
+    if raw.isdigit():
+        number = str(int(raw))
+        if number in users:
+            return number
+        if raw in users:
+            return raw
+    needle = raw.lower()
+    exact = []
+    partial = []
+    for user_id, user in users.items():
+        if not isinstance(user, dict):
+            continue
+        username = str(user.get("username") or "").lstrip("@").lower()
+        first_name = str(user.get("first_name") or "").lower()
+        if username == needle or first_name == needle or str(user_id) == raw:
+            exact.append(str(user_id))
+        elif needle and (needle in username or needle in first_name or needle in str(user_id)):
+            partial.append(str(user_id))
+    if exact:
+        return exact[0]
+    if partial:
+        return partial[0]
+    return None
 
 
 def update_user(user_id, data):
@@ -221,7 +267,13 @@ def update_user(user_id, data):
         if user_id not in users or not isinstance(users.get(user_id), dict):
             users[user_id] = _blank_user()
         if isinstance(data, dict):
+            incoming_sub = data.get("subscription")
+            current_sub = users[user_id].get("subscription")
             users[user_id].update(data)
+            if isinstance(incoming_sub, dict):
+                users[user_id]["subscription"] = incoming_sub
+            elif isinstance(current_sub, dict) and not incoming_sub:
+                users[user_id]["subscription"] = current_sub
             save_users(users)
             return True
         return False
