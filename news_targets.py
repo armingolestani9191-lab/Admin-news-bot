@@ -1,3 +1,4 @@
+from config import DEFAULT_SEND_INTERVAL
 from users import load_users
 from subscription import has_subscription, max_channels_for, is_free_user, FREE_ALLOWED_CATEGORIES
 
@@ -17,7 +18,7 @@ def active_news_channels():
                 continue
             item = dict(channel)
             item["user_id"] = user_id
-            item.setdefault("interval", 10)
+            item.setdefault("interval", DEFAULT_SEND_INTERVAL)
             item.setdefault("last_send", 0)
             item.setdefault("categories", ["همه"])
             if is_free_user(user_id):

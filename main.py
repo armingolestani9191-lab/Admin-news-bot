@@ -1,6 +1,6 @@
 import time
 
-from config import FORBIDDEN_COOLDOWN
+from config import DEFAULT_SEND_INTERVAL, FORBIDDEN_COOLDOWN, MAX_NEWS_AGE_SECONDS, PREFER_NEWS_AGE_SECONDS
 from rss_reader import get_news, is_fresh
 from storage import is_news_sent, mark_news_sent
 from users import update_last_send
@@ -13,7 +13,7 @@ from commenter import extract_message_id, post_comment, remember_post
 from news_targets import active_news_channels
 
 
-CHECK_INTERVAL = 15
+CHECK_INTERVAL = 10
 _FORBIDDEN_UNTIL = {}
 _LAST_EMPTY = 0
 _LAST_SNAP = 0
@@ -55,8 +55,36 @@ def can_send(channel):
         return False
     now = time.time()
     last_send = float(channel.get("last_send") or 0)
-    interval_minutes = int(channel.get("interval") or 10)
-    return (now - last_send) >= max(interval_minutes, 1) * 60
+    wait_minutes = max(1, int(DEFAULT_SEND_INTERVAL or 1))
+    return (now - last_send) >= wait_minutes * 60
+
+
+def pick_news_for_channel(channel, news_list):
+    categories = channel.get("categories") or ["همه"]
+    unused = []
+    for item in news_list:
+        link = (item.get("link") or "").strip()
+        title = (item.get("title") or "").strip()
+        if not link or not title:
+            continue
+        if not is_fresh(item, max_age=MAX_NEWS_AGE_SECONDS):
+            continue
+        if is_news_sent(channel["id"], link):
+            continue
+        if not news_matches_channel(
+            title,
+            item.get("source", ""),
+            categories,
+            item.get("feed_category"),
+        ):
+            continue
+        unused.append(item)
+    if not unused:
+        return None
+    prefer = [item for item in unused if is_fresh(item, max_age=PREFER_NEWS_AGE_SECONDS)]
+    pool = prefer or unused
+    pool.sort(key=lambda item: item.get("published") or 0, reverse=True)
+    return pool[0]
 
 
 def send_news_to_channel(channel, news):
@@ -114,52 +142,38 @@ def run():
             for channel in channels:
                 if not can_send(channel):
                     continue
+                latest_news = pick_news_for_channel(channel, news_list)
+                if not latest_news:
+                    continue
+                try:
+                    result = send_news_to_channel(channel, latest_news)
+                except Exception as send_error:
+                    print("❌ خطا در ارسال:", send_error)
+                    result = {"ok": False, "forbidden": False}
+                if not isinstance(result, dict):
+                    result = {"ok": bool(result), "forbidden": False}
+                if result.get("forbidden"):
+                    mark_forbidden(channel["id"])
+                    continue
+                if not result.get("ok"):
+                    print(f"❌ ارسال ناموفق بود: {channel['id']}")
+                    continue
+                mark_news_sent(channel["id"], latest_news.get("link"))
+                update_last_send(channel["user_id"], channel["id"], time.time())
+                maybe_comment(channel, result)
+                try:
+                    record_message(channel["id"])
+                except Exception:
+                    pass
+                age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
                 categories = channel.get("categories") or ["همه"]
-                for latest_news in news_list:
-                    link = (latest_news.get("link") or "").strip()
-                    title = (latest_news.get("title") or "").strip()
-                    if not link or not title:
-                        continue
-                    if not is_fresh(latest_news):
-                        continue
-                    if is_news_sent(channel["id"], link):
-                        continue
-                    if not news_matches_channel(
-                        title,
-                        latest_news.get("source", ""),
-                        categories,
-                        latest_news.get("feed_category"),
-                    ):
-                        continue
-                    try:
-                        result = send_news_to_channel(channel, latest_news)
-                    except Exception as send_error:
-                        print("❌ خطا در ارسال:", send_error)
-                        result = {"ok": False, "forbidden": False}
-                    if not isinstance(result, dict):
-                        result = {"ok": bool(result), "forbidden": False}
-                    if result.get("forbidden"):
-                        mark_forbidden(channel["id"])
-                        break
-                    if not result.get("ok"):
-                        print(f"❌ ارسال ناموفق بود: {channel['id']}")
-                        break
-                    mark_news_sent(channel["id"], link)
-                    update_last_send(channel["user_id"], channel["id"], time.time())
-                    maybe_comment(channel, result)
-                    try:
-                        record_message(channel["id"])
-                    except Exception:
-                        pass
-                    age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
-                    print(
-                        f"✅ ارسال شد به {channel['id']}\n"
-                        f"📂 دسته خبر: {latest_news.get('feed_category')}\n"
-                        f"🏷 فیلتر کانال: {', '.join(categories)}\n"
-                        f"⏱ عمر خبر: {age_min} دقیقه\n"
-                        f"⏰ ارسال بعدی: {channel.get('interval', 10)} دقیقه دیگر"
-                    )
-                    break
+                print(
+                    f"✅ ارسال شد به {channel['id']}\n"
+                    f"🗂 دسته خبر: {latest_news.get('feed_category')}\n"
+                    f"🏷 فیلتر کانال: {', '.join(categories)}\n"
+                    f"⏱ عمر خبر: {age_min} دقیقه\n"
+                    f"⏰ ارسال بعدی: {DEFAULT_SEND_INTERVAL} دقیقه دیگر"
+                )
             time.sleep(CHECK_INTERVAL)
         except Exception as error:
             print("❌ خطای اصلی:", error)

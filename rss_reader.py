@@ -7,13 +7,19 @@ from urllib.parse import urlparse
 import feedparser
 import requests
 
-from config import CATEGORY_FEEDS, MAX_NEWS_AGE_SECONDS, RSS_CACHE_SECONDS
+from config import (
+    CATEGORY_FEEDS,
+    FALLBACK_NEWS_AGE_SECONDS,
+    MAX_NEWS_AGE_SECONDS,
+    PREFER_NEWS_AGE_SECONDS,
+    RSS_CACHE_SECONDS,
+)
 
 
 _CACHE = {"key": None, "at": 0, "items": []}
 _DEAD_FEEDS = {}
 DEAD_FOR = 600
-HEADERS = {"User-Agent": "Mozilla/5.0 AutoNewsBot/2.4"}
+HEADERS = {"User-Agent": "Mozilla/5.0 AutoNewsBot/2.6"}
 _EMPTY_LOG_AT = 0
 
 
@@ -106,7 +112,7 @@ def _mark_dead(feed_url, error):
 def _fetch_one(category, feed_url):
     items = []
     try:
-        response = requests.get(feed_url, timeout=10, headers=HEADERS)
+        response = requests.get(feed_url, timeout=8, headers=HEADERS)
         if response.status_code >= 400:
             _mark_dead(feed_url, f"HTTP {response.status_code}")
             return items
@@ -116,7 +122,8 @@ def _fetch_one(category, feed_url):
         return items
     host = source_name(feed_url)
     now = time.time()
-    for index, entry in enumerate(feed.entries[:12]):
+    hard_limit = max(MAX_NEWS_AGE_SECONDS, FALLBACK_NEWS_AGE_SECONDS)
+    for entry in feed.entries[:20]:
         title = (entry.get("title") or "").strip()
         link = (entry.get("link") or "").strip()
         if not title or not link:
@@ -126,7 +133,7 @@ def _fetch_one(category, feed_url):
             continue
         if published > now + 120:
             continue
-        if (now - published) > MAX_NEWS_AGE_SECONDS:
+        if (now - published) > hard_limit:
             continue
         items.append({
             "title": title,
@@ -141,9 +148,11 @@ def _fetch_one(category, feed_url):
 
 
 def _rank(items, now):
-    fresh = [item for item in items if is_fresh(item, now, MAX_NEWS_AGE_SECONDS)]
-    fresh.sort(key=lambda item: item.get("published") or 0, reverse=True)
-    return fresh
+    usable = [item for item in items if is_fresh(item, now, MAX_NEWS_AGE_SECONDS)]
+    prefer = [item for item in usable if is_fresh(item, now, PREFER_NEWS_AGE_SECONDS)]
+    pool = prefer or usable
+    pool.sort(key=lambda item: item.get("published") or 0, reverse=True)
+    return pool
 
 
 def get_news(categories=None):
@@ -157,7 +166,7 @@ def get_news(categories=None):
     seen_links = set()
     if not feeds:
         return []
-    workers = min(8, len(feeds))
+    workers = min(10, len(feeds))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = [pool.submit(_fetch_one, category, url) for category, url in feeds]
         for future in as_completed(futures):
