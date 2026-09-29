@@ -55,6 +55,29 @@ def send_message(channel_id, text, reply_markup=None, reply_to_message_id=None):
         return {"ok": False, "code": 0, "forbidden": False, "message_id": None}
 
 
+def edit_message_text(channel_id, message_id, text):
+    if not message_id:
+        return {"ok": False, "code": 0, "forbidden": False, "message_id": None}
+    try:
+        payload = {"chat_id": channel_id, "message_id": int(message_id), "text": text}
+        response = requests.post(f"{BASE_URL}/editMessageText", json=payload, timeout=8)
+        result = _parse_response(response)
+        if result.get("ok"):
+            result["message_id"] = int(message_id)
+            return result
+        response = requests.post(
+            f"{BASE_URL}/editMessage",
+            json={"chat_id": channel_id, "message_id": int(message_id), "text": text},
+            timeout=8,
+        )
+        result = _parse_response(response)
+        if result.get("ok"):
+            result["message_id"] = int(message_id)
+        return result
+    except requests.RequestException:
+        return {"ok": False, "code": 0, "forbidden": False, "message_id": None}
+
+
 def send_photo(channel_id, photo, caption, reply_markup=None):
     payload = {"chat_id": channel_id, "photo": photo, "caption": caption or ""}
     if reply_markup:
