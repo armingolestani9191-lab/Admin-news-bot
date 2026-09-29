@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 
 from storage import users_path
+from config import DEFAULT_SEND_INTERVAL
 
 _LOCK_PATH = users_path() + ".lock"
 _CACHE = {"path": None, "mtime": None, "data": None}
@@ -186,7 +187,7 @@ def add_channel(user_id, channel, max_channels=3):
             "send_image": True,
             "show_emoji": True,
             "footer_text": "",
-            "interval": 10,
+            "interval": int(DEFAULT_SEND_INTERVAL or 1),
             "last_send": 0,
             "categories": default_categories,
             "comment_on": False,
