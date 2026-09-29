@@ -1,13 +1,14 @@
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 import requests
 
+TEHRAN_OFFSET = timezone(timedelta(hours=3, minutes=30))
 try:
     from zoneinfo import ZoneInfo
     TEHRAN = ZoneInfo("Asia/Tehran")
 except Exception:
-    TEHRAN = None
+    TEHRAN = TEHRAN_OFFSET
 
 
 TGJU_URL = "https://call.tgju.org/ajax.json"
@@ -75,9 +76,10 @@ CRYPTO_ITEMS = [
 
 
 def _now_tehran():
-    if TEHRAN:
+    try:
         return datetime.now(TEHRAN)
-    return datetime.now()
+    except Exception:
+        return datetime.now(timezone.utc).astimezone(TEHRAN_OFFSET)
 
 
 def _gregorian_to_jalali(gy, gm, gd):
@@ -105,7 +107,7 @@ def iran_clock():
     jy, jm, jd = _gregorian_to_jalali(now.year, now.month, now.day)
     weekday = WEEKDAYS[now.weekday()]
     month = MONTHS[jm - 1]
-    clock = now.strftime("%H:%M")
+    clock = now.strftime("%H:%M:%S")
     text = f"{weekday} {jd} {month} {jy} — {clock}"
     return text.translate(FA_DIGITS)
 
