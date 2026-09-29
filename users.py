@@ -8,19 +8,10 @@ from config import DEFAULT_SEND_INTERVAL
 
 _LOCK_PATH = users_path() + ".lock"
 _CACHE = {"path": None, "mtime": None, "data": None}
-
-
-def _latin_digits(text):
-    out = []
-    for char in str(text or ""):
-        code = ord(char)
-        if 0x06F0 <= code <= 0x06F9:
-            out.append(str(code - 0x06F0))
-        elif 0x0660 <= code <= 0x0669:
-            out.append(str(code - 0x0660))
-        else:
-            out.append(char)
-    return "".join(out)
+_FA_DIGITS = str.maketrans({
+    **{0x06F0 + i: 48 + i for i in range(10)},
+    **{0x0660 + i: 48 + i for i in range(10)},
+})
 
 
 def _candidate_paths():
@@ -240,7 +231,7 @@ def get_user(user_id, force=False):
 
 
 def search_users(query):
-    raw = _latin_digits(str(query or "")).strip().lstrip("@")
+    raw = str(query or "").strip().lstrip("@").translate(_FA_DIGITS)
     if not raw:
         return None
     users = load_users(force=True)
