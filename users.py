@@ -8,10 +8,10 @@ from config import DEFAULT_SEND_INTERVAL
 
 _LOCK_PATH = users_path() + ".lock"
 _CACHE = {"path": None, "mtime": None, "data": None}
-_FA_DIGITS = str.maketrans({
-    **{0x06F0 + i: 48 + i for i in range(10)},
-    **{0x0660 + i: 48 + i for i in range(10)},
-})
+_FA_DIGITS = {}
+for _i in range(10):
+    _FA_DIGITS[0x06F0 + _i] = 48 + _i
+    _FA_DIGITS[0x0660 + _i] = 48 + _i
 
 
 def _candidate_paths():
