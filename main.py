@@ -11,6 +11,7 @@ from ai import translate_news
 from analytics import record_message, snapshot_members
 from commenter import extract_message_id, post_comment, remember_post
 from news_targets import active_news_channels
+from quiet_hours import is_24h, is_channel_open, news_after_wake
 from prices import (
     PRICE_CATEGORIES,
     fetch_current,
@@ -26,6 +27,8 @@ _FORBIDDEN_UNTIL = {}
 _LAST_EMPTY = 0
 _LAST_SNAP = 0
 _PRICE_STATE = {}
+_QUIET_OPEN = {}
+_QUIET_LOG = {}
 
 
 def get_all_channels():
@@ -117,6 +120,8 @@ def pick_news_for_channel(channel, news_list):
             continue
         if not is_fresh(item, max_age=MAX_NEWS_AGE_SECONDS):
             continue
+        if not news_after_wake(channel, item.get("published")):
+            continue
         if is_news_sent(channel["id"], link):
             continue
         if not news_matches_channel(
@@ -160,6 +165,33 @@ def maybe_comment(channel, result):
 def mark_forbidden(channel_id):
     _FORBIDDEN_UNTIL[channel_id] = time.time() + FORBIDDEN_COOLDOWN
     print(f"⏰ {channel_id} به خاطر 403 برای {FORBIDDEN_COOLDOWN // 60} دقیقه نادیده شد.")
+
+
+def wake_if_needed(channel):
+    channel_id = str(channel.get("id") or "")
+    if not channel_id or is_24h(channel):
+        _QUIET_OPEN[channel_id] = True
+        return True
+    if not is_channel_open(channel):
+        _QUIET_OPEN[channel_id] = False
+        last = float(_QUIET_LOG.get(channel_id) or 0)
+        if time.time() - last > 120:
+            _QUIET_LOG[channel_id] = time.time()
+            print(f"⏸️ کانال {channel_id} در زمان خاموشی است. هیچ خبر و قیمتی ارسال نمی‌شود.")
+        return False
+    if _QUIET_OPEN.get(channel_id) is False:
+        now = time.time()
+        channel["quiet_wake_at"] = now
+        channel["last_send"] = 0
+        try:
+            from users import mark_quiet_wake
+            mark_quiet_wake(channel.get("user_id"), channel["id"], now)
+        except Exception:
+            pass
+        _PRICE_STATE[channel_id] = {}
+        print(f"▶️ کانال {channel_id} دوباره روشن شد. فقط خبر جدید همین لحظه ارسال می‌شود.")
+    _QUIET_OPEN[channel_id] = True
+    return True
 
 
 def handle_prices(channel):
@@ -210,9 +242,13 @@ def run():
                         pass
                 _LAST_SNAP = now
             for channel in channels:
+                if not wake_if_needed(channel):
+                    continue
                 handle_prices(channel)
-            news_list = get_news(needed_categories(channels))
+            news_list = get_news(needed_categories([ch for ch in channels if wake_if_needed(ch)]))
             for channel in channels:
+                if not wake_if_needed(channel):
+                    continue
                 if not can_send(channel):
                     continue
                 latest_news = pick_news_for_channel(channel, news_list or [])
