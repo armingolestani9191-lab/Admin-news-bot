@@ -1,6 +1,5 @@
 from bale import Message
 
-from client import bot
 from states import get_state, clear_state
 from users import add_channel, get_user
 from subscription import has_subscription, max_channels_for
@@ -8,7 +7,6 @@ from handlers.home import home_components
 from channel_utils import normalize_channel_id, channel_exists, bot_is_admin
 
 
-@bot.event
 async def on_message(message: Message):
     if message.from_user is None:
         return
