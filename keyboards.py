@@ -136,8 +136,9 @@ def channel_settings_menu(channel_id, send_image=True, show_emoji=True):
     keyboard.add(InlineKeyboardButton("⏱ فاصله ارسال", callback_data=f"time_{channel_id}"), row=2)
     keyboard.add(InlineKeyboardButton("🏷 دسته‌بندی خبر", callback_data=f"cat_{channel_id}"), row=2)
     keyboard.add(InlineKeyboardButton("✏️ متن پایین خبر", callback_data=f"link_{channel_id}"), row=3)
-    keyboard.add(InlineKeyboardButton("🗑 حذف کانال", callback_data=f"delete_{channel_id}"), row=3)
-    keyboard.add(InlineKeyboardButton("🔙 منوی اصلی", callback_data="m_home"), row=4)
+    keyboard.add(InlineKeyboardButton("🌙 زمان خاموشی کانال", callback_data=f"quiet_{channel_id}"), row=3)
+    keyboard.add(InlineKeyboardButton("🗑 حذف کانال", callback_data=f"delete_{channel_id}"), row=4)
+    keyboard.add(InlineKeyboardButton("🔙 منوی اصلی", callback_data="m_home"), row=5)
     return keyboard
 
 
@@ -193,7 +194,7 @@ def category_menu(selected=None, locked=None):
         return f"✅ {text}" if name in selected else text
     keyboard = InlineKeyboardMarkup()
     keyboard.add(InlineKeyboardButton(label("جنگ", "🚨 جنگ"), callback_data="csel_war"), row=1)
-    keyboard.add(InlineKeyboardButton(label("آب‌وهوا", "🌬 آب‌وهوا"), callback_data="csel_weather"), row=1)
+    keyboard.add(InlineKeyboardButton(label("آب‌وهوا", "💨 آب‌وهوا"), callback_data="csel_weather"), row=1)
     keyboard.add(InlineKeyboardButton(label("طلا و ارز", "💰 طلا و ارز"), callback_data="csel_gold"), row=2)
     keyboard.add(InlineKeyboardButton(label("ارز دیجیتال", "💎 ارز دیجیتال"), callback_data="csel_crypto"), row=2)
     keyboard.add(InlineKeyboardButton(label("فناوری", "💻 فناوری"), callback_data="csel_tech"), row=3)
@@ -242,4 +243,20 @@ def pagination_menu(page, total_pages, prefix):
     if page < total_pages - 1:
         buttons.append(InlineKeyboardButton("➡️", callback_data=f"{prefix}_{page+1}"))
     keyboard.add(*buttons, row=1)
+    return keyboard
+
+
+def quiet_hours_menu(channel_id):
+    from quiet_hours import PRESETS, format_range
+    keyboard = InlineKeyboardMarkup()
+    keyboard.add(InlineKeyboardButton("۲۴ ساعته", callback_data=f"q24_{channel_id}"), row=1)
+    row = 2
+    for index, (start, end) in enumerate(PRESETS):
+        keyboard.add(
+            InlineKeyboardButton(format_range(start, end), callback_data=f"qpre_{index}_{channel_id}"),
+            row=row,
+        )
+        row += 1
+    keyboard.add(InlineKeyboardButton("ساعت دلخواه", callback_data=f"qcus_{channel_id}"), row=row)
+    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data=f"channel_{channel_id}"), row=row + 1)
     return keyboard
