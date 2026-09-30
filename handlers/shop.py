@@ -2,7 +2,6 @@ import time
 
 from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from client import bot
 from ui import edit_message
 from states import set_state, get_state, clear_state
 from keyboards import plans_menu, pay_method_menu, card_pay_menu, home_inline_menu
@@ -62,7 +61,6 @@ def extract_photo(message):
     return None
 
 
-@bot.event
 async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
     user_id = callback.from_user.id
@@ -166,7 +164,6 @@ async def on_callback(callback: CallbackQuery):
         return
 
 
-@bot.event
 async def on_message(message: Message):
     if message.from_user is None:
         return
