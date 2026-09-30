@@ -7,6 +7,7 @@ from keyboards import (
     delete_channel_menu,
     category_menu,
     send_time_menu,
+    quiet_hours_menu,
 )
 from users import (
     delete_channel,
@@ -15,8 +16,10 @@ from users import (
     get_user,
     update_categories,
     update_send_time,
+    update_quiet_hours,
 )
 from states import set_state, get_state, clear_state
+from quiet_hours import PRESETS, format_range, parse_custom_range, schedule_of
 from subscription import is_free_user, FREE_ALLOWED_CATEGORIES, FREE_LOCKED_TIMES
 from prices import normalize_categories
 
@@ -59,21 +62,24 @@ def _channel_flags(user, channel_id):
     show_emoji = True
     categories = ["همه"]
     interval = 10
+    schedule = "۲۴ ساعته"
     if not user:
-        return send_image, show_emoji, categories, interval
+        return send_image, show_emoji, categories, interval, schedule
     for channel in user.get("channels", []):
         if _same_channel(channel.get("id"), channel_id):
             send_image = channel.get("send_image", True)
             show_emoji = channel.get("show_emoji", True)
             categories = normalize_categories(channel.get("categories") or ["همه"])
             interval = channel.get("interval", 10)
+            start, end = schedule_of(channel)
+            schedule = format_range(start, end)
             break
     if "همه" in categories and len(categories) > 1:
         categories = ["همه"]
-    return send_image, show_emoji, categories, interval
+    return send_image, show_emoji, categories, interval, schedule
 
 
-def _settings_text(channel_id, send_image, show_emoji, categories, interval):
+def _settings_text(channel_id, send_image, show_emoji, categories, interval, schedule="۲۴ ساعته"):
     image_state = "روشن" if send_image else "خاموش"
     emoji_state = "روشن" if show_emoji else "خاموش"
     cats = "، ".join(categories) if categories else "همه"
@@ -83,17 +89,18 @@ def _settings_text(channel_id, send_image, show_emoji, categories, interval):
         f"🖼 عکس: {image_state}\n"
         f"😀 ایموجی: {emoji_state}\n"
         f"⏱ فاصله ارسال: {interval} دقیقه\n"
-        f"🏷 دسته‌ها: {cats}\n\n"
+        f"🏷 دسته‌ها: {cats}\n"
+        f"🌙 زمان فعالیت: {schedule}\n\n"
         "از دکمه‌های زیر برای تغییر استفاده کنید."
     )
 
 
 async def _show_settings(callback, channel_id):
     user = get_user(callback.from_user.id)
-    send_image, show_emoji, categories, interval = _channel_flags(user, channel_id)
+    send_image, show_emoji, categories, interval, schedule = _channel_flags(user, channel_id)
     await edit_message(
         callback,
-        _settings_text(channel_id, send_image, show_emoji, categories, interval),
+        _settings_text(channel_id, send_image, show_emoji, categories, interval, schedule),
         channel_settings_menu(channel_id, send_image, show_emoji),
     )
 
@@ -130,7 +137,7 @@ async def on_callback(callback: CallbackQuery):
         selected = list(payload.get("categories") or [])
         if not selected:
             user = get_user(user_id) or {}
-            _, _, selected, _ = _channel_flags(user, channel_id)
+            _, _, selected, _, _ = _channel_flags(user, channel_id)
         selected = normalize_categories(selected)
         if category in locked_cats:
             await edit_message(
@@ -211,7 +218,7 @@ async def on_callback(callback: CallbackQuery):
     if data.startswith("cat_") and not data.startswith("cat_select_"):
         channel_id = data.replace("cat_", "", 1)
         user = get_user(user_id)
-        _, _, categories, _ = _channel_flags(user, channel_id)
+        _, _, categories, _, _ = _channel_flags(user, channel_id)
         set_state(user_id, "category_select", {"channel_id": channel_id, "categories": list(categories)})
         pretty = "، ".join(categories)
         await edit_message(
@@ -220,6 +227,48 @@ async def on_callback(callback: CallbackQuery):
             f"انتخاب فعلی: {pretty}\n\n"
             "روی هر دسته بزن تا روشن/خاموش شود.",
             category_menu(categories, locked_cats),
+        )
+        return
+
+    if data.startswith("quiet_"):
+        channel_id = data.replace("quiet_", "", 1)
+        user = get_user(user_id) or {}
+        *_, schedule = _channel_flags(user, channel_id)
+        await edit_message(
+            callback,
+            "این بخش کمک می‌کنه کانالت طبیعی‌تر به نظر برسه!\n\n"
+            f"الان: {schedule}",
+            quiet_hours_menu(channel_id),
+        )
+        return
+
+    if data.startswith("q24_"):
+        channel_id = data.replace("q24_", "", 1)
+        update_quiet_hours(user_id, channel_id, "", "")
+        clear_state(user_id)
+        await _show_settings(callback, channel_id)
+        return
+
+    if data.startswith("qpre_"):
+        try:
+            _, index, channel_id = data.split("_", 2)
+            start, end = PRESETS[int(index)]
+        except Exception:
+            await edit_message(callback, "این بازه ذخیره نشد.")
+            return
+        update_quiet_hours(user_id, channel_id, start, end)
+        clear_state(user_id)
+        await _show_settings(callback, channel_id)
+        return
+
+    if data.startswith("qcus_"):
+        channel_id = data.replace("qcus_", "", 1)
+        set_state(user_id, "quiet_custom", {"channel_id": channel_id})
+        await edit_message(
+            callback,
+            "ساعت مورد نظر را دقیقاً به این صورت بفرست:\n"
+            "۱۳:۰۰ تا ۰۰:۰۰\n\n"
+            "بدون متن اضافه باشد.",
         )
         return
 
@@ -237,3 +286,28 @@ async def on_callback(callback: CallbackQuery):
     if data.startswith("nodel_"):
         await _show_settings(callback, data.replace("nodel_", "", 1))
         return
+
+
+async def on_message(message):
+    if message.from_user is None:
+        return
+    user_id = message.from_user.id
+    state = get_state(user_id)
+    if state.get("state") != "quiet_custom":
+        return
+    text = (message.content or "").strip()
+    if text in ("🏠 منوی اصلی", "🔙 بازگشت", "❌ انصراف"):
+        return
+    parsed, error = parse_custom_range(text)
+    channel_id = (state.get("data") or {}).get("channel_id")
+    if not parsed:
+        await message.reply(error or "بدون متن اضافه باشد.\nمثال درست: ۱۳:۰۰ تا ۰۰:۰۰")
+        return
+    if not channel_id:
+        clear_state(user_id)
+        await message.reply("کانال پیدا نشد. دوباره از تنظیمات وارد شو.")
+        return
+    start, end = parsed
+    update_quiet_hours(user_id, channel_id, start, end)
+    clear_state(user_id)
+    await message.reply(f"زمان فعالیت این کانال روی {format_range(start, end)} تنظیم شد.")
