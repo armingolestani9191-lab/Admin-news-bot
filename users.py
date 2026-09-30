@@ -7,7 +7,7 @@ from storage import users_path
 from config import DEFAULT_SEND_INTERVAL
 
 _LOCK_PATH = users_path() + ".lock"
-_CACHE = {"path": None, "mtime": None, "data": None}
+_CACHE = {"path": None, "mtime": None, "data": None, "at": 0}
 _FA_DIGITS = {}
 for _i in range(10):
     _FA_DIGITS[0x06F0 + _i] = 48 + _i
@@ -103,6 +103,7 @@ def _remember(path, users):
     _CACHE["path"] = path
     _CACHE["mtime"] = mtime
     _CACHE["data"] = users
+    _CACHE["at"] = time.time()
     return users
 
 
@@ -111,6 +112,9 @@ def load_users(force=False):
     folder = os.path.dirname(path)
     if folder:
         os.makedirs(folder, exist_ok=True)
+    now = time.time()
+    if not force and _CACHE["data"] is not None and now - float(_CACHE.get("at") or 0) < 2:
+        return _CACHE["data"]
     if not force:
         try:
             mtime = os.path.getmtime(path) if os.path.exists(path) else None
@@ -121,6 +125,7 @@ def load_users(force=False):
             and _CACHE["path"] == path
             and _CACHE["mtime"] == mtime
         ):
+            _CACHE["at"] = now
             return _CACHE["data"]
     merged = {}
     for candidate in _candidate_paths():
@@ -223,6 +228,12 @@ def user_exists(user_id):
 
 
 def add_user(user_id, first_name, username=None):
+    current = get_user(user_id)
+    if isinstance(current, dict):
+        same_name = (not first_name) or current.get("first_name") == first_name
+        same_user = (not username) or current.get("username") == username
+        if same_name and same_user:
+            return
     ensure_user(user_id, first_name, username)
 
 
