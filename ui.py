@@ -1,3 +1,5 @@
+import threading
+
 import requests
 
 from config import BOT_TOKEN
@@ -21,6 +23,17 @@ def _callback_id(target):
     return None
 
 
+def _send_answer(query_id):
+    try:
+        _SESSION.post(
+            f"{BASE_URL}/answerCallbackQuery",
+            json={"callback_query_id": query_id},
+            timeout=1.0,
+        )
+    except Exception:
+        pass
+
+
 def answer_callback(target):
     if getattr(target, "_answered", False):
         return True
@@ -32,14 +45,11 @@ def answer_callback(target):
     except Exception:
         pass
     try:
-        _SESSION.post(
-            f"{BASE_URL}/answerCallbackQuery",
-            json={"callback_query_id": query_id},
-            timeout=0.12,
-        )
+        threading.Thread(target=_send_answer, args=(query_id,), daemon=True).start()
         return True
     except Exception:
-        return False
+        _send_answer(query_id)
+        return True
 
 
 async def edit_message(target, text, components=None):
