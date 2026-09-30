@@ -389,3 +389,22 @@ def update_send_time(user_id, channel_id, interval):
 
 def update_last_send(user_id, channel_id, last_send):
     return _patch_channel(user_id, channel_id, {"last_send": last_send})
+
+
+def update_quiet_hours(user_id, channel_id, start="", end=""):
+    payload = {
+        "active_start": start or "",
+        "active_end": end or "",
+    }
+    if not start or not end:
+        payload["quiet_wake_at"] = 0
+    return _patch_channel(user_id, channel_id, payload)
+
+
+def mark_quiet_wake(user_id, channel_id, wake_at):
+    return _patch_channel(user_id, channel_id, {
+        "quiet_wake_at": float(wake_at or 0),
+        "last_send": 0,
+        "price_at_طلا و ارز": 0,
+        "price_at_ارز دیجیتال": 0,
+    })
