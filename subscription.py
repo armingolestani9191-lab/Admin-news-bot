@@ -110,7 +110,7 @@ def parse_expire(value):
 
 
 def subscription_info(user_id):
-    user = get_user(user_id, force=True) or {}
+    user = get_user(user_id) or {}
     sub = user.get("subscription") if isinstance(user.get("subscription"), dict) else {}
     kind = str(sub.get("type") or "none").strip().lower() or "none"
     expire = parse_expire(sub.get("expire") or sub.get("expires") or sub.get("expire_date"))
