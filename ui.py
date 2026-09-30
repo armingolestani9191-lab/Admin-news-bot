@@ -35,7 +35,7 @@ def answer_callback(target):
         _SESSION.post(
             f"{BASE_URL}/answerCallbackQuery",
             json={"callback_query_id": query_id},
-            timeout=0.4,
+            timeout=0.12,
         )
         return True
     except Exception:
