@@ -3,7 +3,7 @@ import time
 from config import DEFAULT_SEND_INTERVAL, FORBIDDEN_COOLDOWN, MAX_NEWS_AGE_SECONDS, PREFER_NEWS_AGE_SECONDS
 from rss_reader import get_news, is_fresh
 from storage import is_news_sent, mark_news_sent
-from users import update_last_send
+from users import get_user, update_last_send
 from sender import send_message, send_photo
 from utils import add_emoji
 from category_engine import detect_category_advanced, news_matches_channel
@@ -11,7 +11,7 @@ from ai import translate_news
 from analytics import record_message, snapshot_members
 from commenter import extract_message_id, post_comment, remember_post
 from news_targets import active_news_channels
-from quiet_hours import is_24h, is_channel_open, news_after_wake
+from quiet_hours import is_24h, is_channel_open, news_after_wake, schedule_of
 from prices import (
     PRICE_CATEGORIES,
     fetch_current,
@@ -29,6 +29,7 @@ _LAST_SNAP = 0
 _PRICE_STATE = {}
 _QUIET_OPEN = {}
 _QUIET_LOG = {}
+_QUIET_SCHED = {}
 
 
 def get_all_channels():
@@ -40,6 +41,35 @@ def needed_categories(channels):
     for channel in channels:
         selected.update(news_categories_only(channel.get("categories") or ["همه"]))
     return list(selected)
+
+
+def _same_channel(left, right):
+    return str(left or "").strip().lower() == str(right or "").strip().lower()
+
+
+def _schedule_key(channel):
+    start, end = schedule_of(channel)
+    return f"{start}|{end}"
+
+
+def live_channel(channel):
+    user_id = channel.get("user_id")
+    channel_id = channel.get("id")
+    if not user_id or not channel_id:
+        return None
+    try:
+        user = get_user(user_id, force=True) or {}
+    except Exception:
+        return channel
+    for item in user.get("channels") or []:
+        if not _same_channel(item.get("id"), channel_id):
+            continue
+        if item.get("status") != "active":
+            return None
+        live = dict(item)
+        live["user_id"] = user_id
+        return live
+    return None
 
 
 def build_message(news, channel):
@@ -169,7 +199,14 @@ def mark_forbidden(channel_id):
 
 def wake_if_needed(channel):
     channel_id = str(channel.get("id") or "")
-    if not channel_id or is_24h(channel):
+    if not channel_id:
+        return False
+    key = _schedule_key(channel)
+    prev = _QUIET_SCHED.get(channel_id)
+    if prev is not None and prev != key:
+        print(f"🔄 ساعت خاموشی {channel_id} عوض شد. از بازه جدید پیروی می‌شود.")
+    _QUIET_SCHED[channel_id] = key
+    if is_24h(channel):
         _QUIET_OPEN[channel_id] = True
         return True
     if not is_channel_open(channel):
@@ -179,7 +216,7 @@ def wake_if_needed(channel):
             _QUIET_LOG[channel_id] = time.time()
             print(f"⏸️ کانال {channel_id} در زمان خاموشی است. هیچ خبر و قیمتی ارسال نمی‌شود.")
         return False
-    if _QUIET_OPEN.get(channel_id) is False:
+    if _QUIET_OPEN.get(channel_id) is False or (prev is not None and prev != key):
         now = time.time()
         channel["quiet_wake_at"] = now
         channel["last_send"] = 0
@@ -197,27 +234,30 @@ def wake_if_needed(channel):
 def handle_prices(channel):
     categories = normalize_categories(channel.get("categories") or ["همه"])
     for kind in PRICE_CATEGORIES:
+        live = live_channel(channel)
+        if not live or not wake_if_needed(live):
+            return
         if not wants_price(categories, kind):
             continue
-        if not can_send_price(channel, kind):
+        if not can_send_price(live, kind):
             continue
         try:
-            result = send_price_to_channel(channel, kind)
+            result = send_price_to_channel(live, kind)
         except Exception as error:
             print("❌ خطا در ارسال قیمت:", error)
             continue
         if result.get("forbidden"):
-            mark_forbidden(channel["id"])
+            mark_forbidden(live["id"])
             return
         if not result.get("ok"):
-            print(f"❌ لیست قیمت نرفت: {channel['id']} {kind}")
+            print(f"❌ لیست قیمت نرفت: {live['id']} {kind}")
             continue
-        remember_price(channel, kind)
+        remember_price(live, kind)
         try:
-            record_message(channel["id"])
+            record_message(live["id"])
         except Exception:
             pass
-        print(f"✅ لیست {kind} برای {channel['id']} ارسال شد")
+        print(f"✅ لیست {kind} برای {live['id']} ارسال شد")
 
 
 def run():
@@ -242,42 +282,52 @@ def run():
                         pass
                 _LAST_SNAP = now
             for channel in channels:
-                if not wake_if_needed(channel):
+                live = live_channel(channel)
+                if not live or not wake_if_needed(live):
                     continue
-                handle_prices(channel)
-            news_list = get_news(needed_categories([ch for ch in channels if wake_if_needed(ch)]))
+                handle_prices(live)
+            open_channels = []
             for channel in channels:
-                if not wake_if_needed(channel):
+                live = live_channel(channel)
+                if live and wake_if_needed(live):
+                    open_channels.append(live)
+            news_list = get_news(needed_categories(open_channels))
+            for channel in open_channels:
+                live = live_channel(channel)
+                if not live or not wake_if_needed(live):
                     continue
-                if not can_send(channel):
+                if not can_send(live):
                     continue
-                latest_news = pick_news_for_channel(channel, news_list or [])
+                latest_news = pick_news_for_channel(live, news_list or [])
                 if not latest_news:
                     continue
+                live = live_channel(live)
+                if not live or not wake_if_needed(live):
+                    continue
                 try:
-                    result = send_news_to_channel(channel, latest_news)
+                    result = send_news_to_channel(live, latest_news)
                 except Exception as send_error:
                     print("❌ خطا در ارسال:", send_error)
                     result = {"ok": False, "forbidden": False}
                 if not isinstance(result, dict):
                     result = {"ok": bool(result), "forbidden": False}
                 if result.get("forbidden"):
-                    mark_forbidden(channel["id"])
+                    mark_forbidden(live["id"])
                     continue
                 if not result.get("ok"):
-                    print(f"❌ ارسال ناموفق بود: {channel['id']}")
+                    print(f"❌ ارسال ناموفق بود: {live['id']}")
                     continue
-                mark_news_sent(channel["id"], latest_news.get("link"))
-                update_last_send(channel["user_id"], channel["id"], time.time())
-                maybe_comment(channel, result)
+                mark_news_sent(live["id"], latest_news.get("link"))
+                update_last_send(live["user_id"], live["id"], time.time())
+                maybe_comment(live, result)
                 try:
-                    record_message(channel["id"])
+                    record_message(live["id"])
                 except Exception:
                     pass
                 age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
-                categories = channel.get("categories") or ["همه"]
+                categories = live.get("categories") or ["همه"]
                 print(
-                    f"✅ ارسال شد به {channel['id']}\n"
+                    f"✅ ارسال شد به {live['id']}\n"
                     f"🗂 دسته خبر: {latest_news.get('feed_category')}\n"
                     f"🏷 فیلتر کانال: {', '.join(categories)}\n"
                     f"⏱ عمر خبر: {age_min} دقیقه\n"
