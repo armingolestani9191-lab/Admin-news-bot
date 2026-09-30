@@ -53,6 +53,14 @@ def _schedule_key(channel):
     return f"{start}|{end}"
 
 
+def send_wait_minutes(channel):
+    try:
+        minutes = int(channel.get("interval") or DEFAULT_SEND_INTERVAL or 1)
+    except (TypeError, ValueError):
+        minutes = int(DEFAULT_SEND_INTERVAL or 1)
+    return max(1, min(minutes, 180))
+
+
 def live_channel(channel):
     user_id = channel.get("user_id")
     channel_id = channel.get("id")
@@ -98,7 +106,7 @@ def can_send(channel):
         return False
     now = time.time()
     last_send = float(channel.get("last_send") or 0)
-    wait_minutes = max(1, int(DEFAULT_SEND_INTERVAL or 1))
+    wait_minutes = send_wait_minutes(channel)
     return (now - last_send) >= wait_minutes * 60
 
 
@@ -326,12 +334,13 @@ def send_one_to_channel(channel, news_list):
     maybe_comment(live, result)
     age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
     categories = live.get("categories") or ["همه"]
+    wait_minutes = send_wait_minutes(live)
     print(
         f"✅ ارسال شد به {live['id']}\n"
         f"🗂 دسته خبر: {latest_news.get('feed_category')}\n"
         f"🏷 فیلتر کانال: {', '.join(categories)}\n"
         f"⏱ عمر خبر: {age_min} دقیقه\n"
-        f"⏰ ارسال بعدی: {DEFAULT_SEND_INTERVAL} دقیقه دیگر"
+        f"⏰ ارسال بعدی: {wait_minutes} دقیقه دیگر"
     )
 
 
