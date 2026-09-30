@@ -120,6 +120,10 @@ def _callback_modules(data):
         "delete_",
         "yesdel_",
         "nodel_",
+        "quiet_",
+        "q24_",
+        "qpre_",
+        "qcus_",
     )):
         names = ("channel_settings",)
     elif data.startswith("channel_") and not data.startswith("channel_stats_"):
@@ -148,7 +152,7 @@ def _message_modules(user_id, text):
         keys = ("footer_text", "navigation")
     elif name in ("comment_text", "comment_edit"):
         keys = ("comments", "navigation")
-    elif name == "category_select":
+    elif name in ("category_select", "quiet_custom"):
         keys = ("channel_settings", "navigation")
     elif text in ("🏠 منوی اصلی", "🔙 بازگشت"):
         keys = ("navigation",)
