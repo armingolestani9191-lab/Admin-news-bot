@@ -31,6 +31,10 @@ _QUIET_OPEN = {}
 _QUIET_LOG = {}
 _QUIET_SCHED = {}
 _SEND_TURN = {}
+_FA_TO_EN = {}
+for _i in range(10):
+    _FA_TO_EN[chr(0x06F0 + _i)] = str(_i)
+    _FA_TO_EN[chr(0x0660 + _i)] = str(_i)
 
 
 def get_all_channels():
@@ -53,9 +57,17 @@ def _schedule_key(channel):
     return f"{start}|{end}"
 
 
+def _digits(value):
+    text = ""
+    for char in str(value or ""):
+        text += _FA_TO_EN.get(char, char)
+    return text
+
+
 def send_wait_minutes(channel):
+    raw = _digits(channel.get("interval") if channel else None)
     try:
-        minutes = int(channel.get("interval") or DEFAULT_SEND_INTERVAL or 1)
+        minutes = int(float(raw)) if raw else int(DEFAULT_SEND_INTERVAL or 1)
     except (TypeError, ValueError):
         minutes = int(DEFAULT_SEND_INTERVAL or 1)
     return max(1, min(minutes, 180))
@@ -105,7 +117,12 @@ def can_send(channel):
     if until > time.time():
         return False
     now = time.time()
-    last_send = float(channel.get("last_send") or 0)
+    try:
+        last_send = float(channel.get("last_send") or 0)
+    except (TypeError, ValueError):
+        last_send = 0
+    if last_send > now + 60:
+        last_send = 0
     wait_minutes = send_wait_minutes(channel)
     return (now - last_send) >= wait_minutes * 60
 
@@ -121,25 +138,20 @@ def send_kinds_for(channel):
     return kinds
 
 
-def take_send_kind(channel, kinds):
-    if not kinds:
-        return None
+def current_turn(channel):
     channel_id = str(channel["id"])
     try:
-        turn = int(_SEND_TURN.get(channel_id, channel.get("send_turn") or 0))
+        return int(_SEND_TURN.get(channel_id, channel.get("send_turn") or 0))
     except (TypeError, ValueError):
-        turn = 0
-    kind = kinds[turn % len(kinds)]
-    _SEND_TURN[channel_id] = turn + 1
-    return kind
+        return 0
 
 
-def remember_turn(channel):
+def remember_turn(channel, turn):
     channel_id = str(channel["id"])
-    turn = int(_SEND_TURN.get(channel_id) or 0)
+    _SEND_TURN[channel_id] = int(turn or 0)
     try:
         from users import _patch_channel
-        _patch_channel(channel.get("user_id"), channel["id"], {"send_turn": turn})
+        _patch_channel(channel.get("user_id"), channel["id"], {"send_turn": int(turn or 0)})
     except Exception:
         pass
 
@@ -266,7 +278,6 @@ def finish_send(channel, result):
     if not result.get("ok"):
         return False
     update_last_send(channel.get("user_id"), channel["id"], time.time())
-    remember_turn(channel)
     try:
         record_message(channel["id"])
     except Exception:
@@ -283,65 +294,68 @@ def send_one_to_channel(channel, news_list):
     kinds = send_kinds_for(live)
     if not kinds:
         return
-    kind = take_send_kind(live, kinds)
-    result = None
-    latest_news = None
-    if kind == "news":
-        latest_news = pick_news_for_channel(live, news_list or [])
-        if not latest_news:
-            for other in kinds:
-                if other == "news":
-                    continue
-                kind = other
-                break
-            else:
-                return
-    if kind != "news":
-        live = live_channel(live)
+    turn = current_turn(live)
+    news_list = news_list or get_news(news_categories_only(live.get("categories") or ["همه"])) or []
+    sent = False
+    for offset in range(len(kinds)):
+        live = live_channel(live) or live
         if not live or not wake_if_needed(live):
             return
+        kind = kinds[(turn + offset) % len(kinds)]
+        result = None
+        latest_news = None
+        if kind == "news":
+            latest_news = pick_news_for_channel(live, news_list)
+            if not latest_news:
+                continue
+            try:
+                result = send_news_to_channel(live, latest_news)
+            except Exception as send_error:
+                print("❌ خطا در ارسال:", send_error)
+                continue
+            if not isinstance(result, dict):
+                result = {"ok": bool(result), "forbidden": False}
+            if not finish_send(live, result):
+                if result.get("forbidden"):
+                    return
+                print(f"❌ ارسال ناموفق بود: {live['id']}")
+                continue
+            mark_news_sent(live["id"], latest_news.get("link"))
+            maybe_comment(live, result)
+            remember_turn(live, turn + offset + 1)
+            age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
+            categories = live.get("categories") or ["همه"]
+            wait_minutes = send_wait_minutes(live)
+            print(
+                f"✅ ارسال شد به {live['id']}\n"
+                f"🗂 دسته خبر: {latest_news.get('feed_category')}\n"
+                f"🏷 فیلتر کانال: {', '.join(categories)}\n"
+                f"⏱ عمر خبر: {age_min} دقیقه\n"
+                f"⏰ ارسال بعدی: {wait_minutes} دقیقه دیگر"
+            )
+            sent = True
+            break
         try:
             result = send_price_to_channel(live, kind)
         except Exception as error:
             print("❌ خطا در ارسال قیمت:", error)
-            return
+            continue
         if not isinstance(result, dict):
             result = {"ok": bool(result), "forbidden": False}
         if not finish_send(live, result):
             if result.get("forbidden"):
                 return
             print(f"❌ لیست قیمت نرفت: {live['id']} {kind}")
-            return
+            continue
         remember_price(live, kind)
+        remember_turn(live, turn + offset + 1)
         print(f"✅ لیست {kind} برای {live['id']} ارسال شد")
-        return
-    live = live_channel(live)
-    if not live or not wake_if_needed(live):
-        return
-    try:
-        result = send_news_to_channel(live, latest_news)
-    except Exception as send_error:
-        print("❌ خطا در ارسال:", send_error)
-        result = {"ok": False, "forbidden": False}
-    if not isinstance(result, dict):
-        result = {"ok": bool(result), "forbidden": False}
-    if not finish_send(live, result):
-        if result.get("forbidden"):
-            return
-        print(f"❌ ارسال ناموفق بود: {live['id']}")
-        return
-    mark_news_sent(live["id"], latest_news.get("link"))
-    maybe_comment(live, result)
-    age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
-    categories = live.get("categories") or ["همه"]
-    wait_minutes = send_wait_minutes(live)
-    print(
-        f"✅ ارسال شد به {live['id']}\n"
-        f"🗂 دسته خبر: {latest_news.get('feed_category')}\n"
-        f"🏷 فیلتر کانال: {', '.join(categories)}\n"
-        f"⏱ عمر خبر: {age_min} دقیقه\n"
-        f"⏰ ارسال بعدی: {wait_minutes} دقیقه دیگر"
-    )
+        sent = True
+        break
+    if not sent:
+        print(
+            f"⚠️ زمان ارسال {live.get('id')} رسید ولی خبر تازه برای دسته‌ها نبود."
+        )
 
 
 def run():
