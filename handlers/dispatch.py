@@ -67,6 +67,7 @@ def _load_msg():
             profile,
             support,
             help,
+            channel_settings,
         )
         _MSG = {
             "admin_complete": admin_complete,
@@ -82,6 +83,7 @@ def _load_msg():
             "profile": profile,
             "support": support,
             "help": help,
+            "channel_settings": channel_settings,
         }
     return _MSG
 
@@ -134,7 +136,7 @@ def _callback_modules(data):
         names = ("home",)
     else:
         names = ("home", "channel_settings", "admin_panel")
-    return [mods[name] for name in names]
+    return [mods[name] for name in names if name in mods]
 
 
 def _message_modules(user_id, text):
@@ -179,7 +181,7 @@ def _message_modules(user_id, text):
         keys = ("admin_system", "admin_panel", "admin_complete")
     else:
         keys = ("navigation",)
-    return [mods[key] for key in keys]
+    return [mods[key] for key in keys if key in mods]
 
 
 @bot.event
