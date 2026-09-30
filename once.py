@@ -24,11 +24,11 @@ def once(obj, scope=""):
     user = getattr(getattr(obj, "from_user", None), "id", "")
     tap_key = f"{scope}:tap:{user}:{data}"
     last_tap = _SEEN.get(tap_key, 0)
-    if data and now - last_tap < 0.8:
+    if data and now - last_tap < 0.3:
         return False
     key = _stable_key(obj, scope)
     last = _SEEN.get(key, 0)
-    if now - last < 1.0:
+    if now - last < 0.35:
         return False
     _SEEN[key] = now
     if data:
