@@ -22,6 +22,7 @@ from subscription import (
 from force_join import is_force_join_enabled, is_user_joined
 from force_join_keyboard import force_join_keyboard
 from admin_store import is_admin
+from quiet_hours import format_range, is_24h, is_channel_open, schedule_of
 
 
 _START_SEEN = {}
@@ -47,6 +48,38 @@ def _remember_user(source):
     if user is None:
         return
     add_user(user.id, getattr(user, "first_name", None), getattr(user, "username", None))
+
+
+def _find_channel(channels, channel_id):
+    target = str(channel_id or "").strip().lower()
+    for item in channels or []:
+        if str(item.get("id") or "").strip().lower() == target:
+            return item
+    return None
+
+
+def _quiet_block_text(channel):
+    start, end = schedule_of(channel or {})
+    return (
+        f"ولی هنوز تایم فعالیت {channel.get('id')} نرسیده.\n"
+        f"بازه فعلی: {format_range(start, end)}\n\n"
+        "فعلاً هیچ خبری نمی‌رود.\n"
+        "اگر می‌خوای الان شروع شود، از تنظیمات کانال زمان خاموشی را تغییر بده."
+    )
+
+
+def _resume_text(channel, already=False):
+    channel_id = (channel or {}).get("id") or "کانال"
+    if already:
+        text = f"✅ ربات از قبل در {channel_id} فعال است."
+    else:
+        text = f"▶️ ارسال شروع شد\n\nاز الان در {channel_id} خبر می‌ذارم."
+    if channel and not is_24h(channel) and not is_channel_open(channel):
+        text = (
+            f"▶️ ارسال {channel_id} روشن شد\n\n"
+            + _quiet_block_text(channel)
+        )
+    return text
 
 
 def home_text(user_id):
@@ -207,23 +240,21 @@ async def on_callback(callback: CallbackQuery):
             return
         if len(channels) == 1:
             channel = channels[0]
-            if channel.get("status") == "active":
-                await edit_message(callback, f"✅ ربات از قبل در {channel['id']} فعال است.", home_components(user_id))
-                return
-            set_channel_status(user_id, channel["id"], "active")
-            await edit_message(callback, f"▶️ ارسال شروع شد\n\nاز الان در {channel['id']} خبر می‌ذارم.", home_components(user_id))
+            already = channel.get("status") == "active"
+            if not already:
+                set_channel_status(user_id, channel["id"], "active")
+            await edit_message(callback, _resume_text(channel, already=already), home_components(user_id))
             return
         await edit_message(callback, "▶️ کدام کانال شروع شود؟", channel_pick_menu(channels, "resume_"))
         return
 
     if data.startswith("resume_"):
         channel_id = data.replace("resume_", "", 1)
-        current = next((item for item in channels if item.get("id") == channel_id), None)
-        if current and current.get("status") == "active":
-            await edit_message(callback, f"✅ ربات از قبل در {channel_id} فعال است.", home_components(user_id))
-            return
-        set_channel_status(user_id, channel_id, "active")
-        await edit_message(callback, f"▶️ ارسال شروع شد\n\nاز الان در {channel_id} خبر می‌ذارم.", home_components(user_id))
+        current = _find_channel(channels, channel_id)
+        already = bool(current and current.get("status") == "active")
+        if not already:
+            set_channel_status(user_id, channel_id, "active")
+        await edit_message(callback, _resume_text(current or {"id": channel_id}, already=already), home_components(user_id))
         return
 
     if data == "m_buy":
