@@ -190,7 +190,6 @@ async def on_callback(callback: CallbackQuery):
         return
     answer_callback(callback)
     user = callback.from_user
-    _touch_user(user)
     if user and is_banned(user.id) and not is_admin(user.id):
         await edit_message(callback, BAN_TEXT, InlineKeyboardMarkup())
         return
