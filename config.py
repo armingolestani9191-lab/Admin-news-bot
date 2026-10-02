@@ -10,18 +10,17 @@ import os
 # Bot
 # ==========================
 
-BOT_TOKEN = os.getenv(
-    "1484088959:653ntnnmPdDkkjwfI7IvZITjxNZ1bSwbnpw",
-    # توکن فعلی خودت اینجا باقی بماند
-)
+# 🟢 توکن بات را فقط بین کوتیشن‌های پایین قرار بده
+BOT_TOKEN = "1484088959:653ntnnmPdDkkjwfI7IvZITjxNZ1bSwbnpw"
 
 
 # ==========================
 # Permanent Admins
 # ==========================
 
-# Admin IDs defined here are permanent and do not depend on SQLite.
-# Additional admins can still be added from inside the bot and are stored in SQLite.
+# 🟢 ادمین اصلی و دائمی
+# این ادمین به SQLite وابسته نیست.
+# حتی اگر دیتابیس پاک شود، این ID همچنان ادمین باقی می‌ماند.
 
 ADMIN_IDS = [
     595450272,
@@ -32,16 +31,12 @@ ADMIN_IDS = [
 # SQLite Database
 # ==========================
 
-# Railway Volume:
-# /data
-#
-# Database:
-# /data/admin_news.db
-
 if os.getenv("DATABASE_PATH"):
     DATABASE_PATH = os.getenv("DATABASE_PATH")
+
 elif os.path.isdir("/data"):
     DATABASE_PATH = "/data/admin_news.db"
+
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     DATABASE_PATH = os.path.join(BASE_DIR, "data", "admin_news.db")
@@ -52,14 +47,27 @@ else:
 # ==========================
 
 MAX_SENT_NEWS = 5000
+
 CHECK_EMPTY_INTERVAL = 60
-SEND_INTERVALS = [60, 300, 600]
+
+SEND_INTERVALS = [
+    60,
+    300,
+    600,
+]
+
 MAX_CHANNELS = 3
+
 RSS_CACHE_SECONDS = 20
+
 FORBIDDEN_COOLDOWN = 1800
+
 DEFAULT_SEND_INTERVAL = 1
+
 PREFER_NEWS_AGE_SECONDS = 8 * 60
+
 MAX_NEWS_AGE_SECONDS = 30 * 60
+
 FALLBACK_NEWS_AGE_SECONDS = 30 * 60
 
 
@@ -68,6 +76,7 @@ FALLBACK_NEWS_AGE_SECONDS = 30 * 60
 # ==========================
 
 CATEGORY_FEEDS = {
+
     "ورزش": [
         "https://www.mehrnews.com/rss/tp/9",
         "https://www.isna.ir/rss/tp/24",
@@ -110,10 +119,16 @@ CATEGORY_FEEDS = {
 }
 
 
+# ==========================
+# All RSS Feeds
+# ==========================
+
 RSS_FEEDS = []
 
 for _feeds in CATEGORY_FEEDS.values():
+
     for _url in _feeds:
+
         if _url not in RSS_FEEDS:
             RSS_FEEDS.append(_url)
 
@@ -125,6 +140,7 @@ for _feeds in CATEGORY_FEEDS.values():
 CATEGORY_RULES = {
 
     "ورزش": {
+
         "sources": [
             "mehrnews.com/rss/tp/9",
             "isna.ir/rss/tp/24",
@@ -161,7 +177,9 @@ CATEGORY_RULES = {
         ],
     },
 
+
     "اقتصاد": {
+
         "sources": [
             "sena.ir",
             "mehrnews.com/rss/tp/20",
@@ -191,7 +209,9 @@ CATEGORY_RULES = {
         ],
     },
 
+
     "جنگ": {
+
         "sources": [
             "defapress.ir",
             "mehrnews.com/rss/tp/39",
@@ -238,7 +258,9 @@ CATEGORY_RULES = {
         ],
     },
 
+
     "فناوری": {
+
         "sources": [
             "zoomit.ir",
             "isna.ir/rss/tp/41",
@@ -264,7 +286,9 @@ CATEGORY_RULES = {
         ],
     },
 
+
     "سیاسی": {
+
         "sources": [
             "mehrnews.com/rss/tp/7",
             "isna.ir/rss/tp/14",
@@ -290,7 +314,9 @@ CATEGORY_RULES = {
         ],
     },
 
+
     "آب‌وهوا": {
+
         "sources": [
             "isna.ir/rss/tp/62",
             "imna.ir/rss/tp/153",
