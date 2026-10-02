@@ -1,5 +1,3 @@
-import json
-import os
 import secrets
 from datetime import date, datetime, timedelta
 
@@ -9,7 +7,7 @@ try:
 except Exception:
     TEHRAN = None
 
-from storage import users_path
+from storage import get_value, set_value
 from users import ensure_user, get_user, update_user
 
 
@@ -25,12 +23,13 @@ FREE_MAX_CHANNELS = 1
 PAID_MAX_CHANNELS = 3
 FREE_ALLOWED_CATEGORIES = ["ورزش", "آب‌وهوا"]
 FREE_LOCKED_TIMES = {1, 5}
-_DEFAULT_CARD = os.getenv("CARD_NUMBER", "6037-9975-1111-2222")
+_DEFAULT_CARD = "6037-9975-1111-2222"
 ADMIN_IDS = [595450272]
 
-LICENSES_FILE = os.path.join(os.path.dirname(users_path()) or "data", "licenses.json")
-PAYMENTS_FILE = os.path.join(os.path.dirname(users_path()) or "data", "payments.json")
-CARD_FILE = os.path.join(os.path.dirname(users_path()) or "data", "card.json")
+_STORAGE_NAMESPACE = "subscription"
+_LICENSES_KEY = "licenses"
+_PAYMENTS_KEY = "payments"
+_CARD_KEY = "card"
 
 
 def today_tehran():
@@ -39,44 +38,42 @@ def today_tehran():
     return date.today()
 
 
-def _load_json(path, default):
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    if not os.path.exists(path):
-        return default
-    try:
-        with open(path, "r", encoding="utf-8") as file:
-            data = json.load(file)
-            return data if isinstance(data, type(default)) else default
-    except Exception:
-        return default
-
-
-def _save_json(path, data):
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    with open(path, "w", encoding="utf-8") as file:
-        json.dump(data, file, ensure_ascii=False, indent=2)
-
-
 def get_card_number():
-    data = _load_json(CARD_FILE, {})
+    data = get_value(_STORAGE_NAMESPACE, _CARD_KEY, {})
+
     number = ""
+
     if isinstance(data, dict):
         number = str(data.get("number") or "").strip()
     elif isinstance(data, str):
         number = data.strip()
+
     return number or _DEFAULT_CARD
 
 
 def set_card_number(raw):
     text = str(raw or "").strip().replace(" ", "")
     digits = "".join(ch for ch in text if ch.isdigit())
+
     if len(digits) < 12 or len(digits) > 19:
         return None
+
     if len(digits) == 16:
-        number = f"{digits[0:4]}-{digits[4:8]}-{digits[8:12]}-{digits[12:16]}"
+        number = (
+            f"{digits[0:4]}-"
+            f"{digits[4:8]}-"
+            f"{digits[8:12]}-"
+            f"{digits[12:16]}"
+        )
     else:
         number = digits
-    _save_json(CARD_FILE, {"number": number})
+
+    set_value(
+        _STORAGE_NAMESPACE,
+        _CARD_KEY,
+        {"number": number},
+    )
+
     return number
 
 
@@ -84,25 +81,47 @@ CARD_NUMBER = get_card_number()
 
 
 def load_licenses():
-    return _load_json(LICENSES_FILE, {})
+    data = get_value(
+        _STORAGE_NAMESPACE,
+        _LICENSES_KEY,
+        {},
+    )
+
+    return data if isinstance(data, dict) else {}
 
 
 def save_licenses(data):
-    _save_json(LICENSES_FILE, data)
+    set_value(
+        _STORAGE_NAMESPACE,
+        _LICENSES_KEY,
+        data,
+    )
 
 
 def load_payments():
-    return _load_json(PAYMENTS_FILE, {})
+    data = get_value(
+        _STORAGE_NAMESPACE,
+        _PAYMENTS_KEY,
+        {},
+    )
+
+    return data if isinstance(data, dict) else {}
 
 
 def save_payments(data):
-    _save_json(PAYMENTS_FILE, data)
+    set_value(
+        _STORAGE_NAMESPACE,
+        _PAYMENTS_KEY,
+        data,
+    )
 
 
 def parse_expire(value):
     if not value:
         return None
+
     text = str(value).strip()[:10]
+
     try:
         return date.fromisoformat(text)
     except Exception:
@@ -111,34 +130,57 @@ def parse_expire(value):
 
 def subscription_info(user_id):
     user = get_user(user_id) or {}
-    sub = user.get("subscription") if isinstance(user.get("subscription"), dict) else {}
+    sub = (
+        user.get("subscription")
+        if isinstance(user.get("subscription"), dict)
+        else {}
+    )
+
     kind = str(sub.get("type") or "none").strip().lower() or "none"
-    expire = parse_expire(sub.get("expire") or sub.get("expires") or sub.get("expire_date"))
+
+    expire = parse_expire(
+        sub.get("expire")
+        or sub.get("expires")
+        or sub.get("expire_date")
+    )
+
     total = int(sub.get("total_days") or 0)
+
     remaining = 0
     active = False
     today = today_tehran()
+
     if expire and expire >= today:
         remaining = (expire - today).days
+
         if remaining <= 0:
             remaining = 1
+
         active = True
+
     elif expire and expire < today:
         kind = "expired"
         remaining = 0
         active = False
+
     if kind in (None, "none", "", "expired") and not active:
         kind = "none" if not expire else "expired"
+
     if not active:
         kind = "none" if kind == "none" else "expired"
         remaining = 0
+
     label = "ندارد"
+
     if active and kind == "free":
         label = "رایگان"
     elif active:
         label = "پولی"
+
     return {
-        "type": kind if active else ("none" if kind == "none" else "expired"),
+        "type": kind if active else (
+            "none" if kind == "none" else "expired"
+        ),
         "active": active,
         "expire": expire.isoformat() if expire else None,
         "remaining": remaining,
@@ -153,18 +195,28 @@ def has_subscription(user_id):
 
 def is_free_user(user_id):
     info = subscription_info(user_id)
+
     return info["active"] and info["type"] == "free"
 
 
 def max_channels_for(user_id):
     if not has_subscription(user_id):
         return 0
-    return FREE_MAX_CHANNELS if is_free_user(user_id) else PAID_MAX_CHANNELS
+
+    return (
+        FREE_MAX_CHANNELS
+        if is_free_user(user_id)
+        else PAID_MAX_CHANNELS
+    )
 
 
 def activate_subscription(user_id, kind, days, extra=None):
     ensure_user(user_id)
-    expire = today_tehran() + timedelta(days=max(1, int(days)))
+
+    expire = today_tehran() + timedelta(
+        days=max(1, int(days))
+    )
+
     payload = {
         "subscription": {
             "type": kind,
@@ -172,59 +224,108 @@ def activate_subscription(user_id, kind, days, extra=None):
             "total_days": int(days),
         }
     }
+
     if isinstance(extra, dict):
         payload.update(extra)
+
     return bool(update_user(user_id, payload))
 
 
-def claim_free_subscription(user_id, first_name="", username=None):
+def claim_free_subscription(
+    user_id,
+    first_name="",
+    username=None,
+):
     ensure_user(user_id, first_name, username)
+
     info = subscription_info(user_id)
     user = get_user(user_id, force=True) or {}
+
     if info["active"]:
         return False, "already"
+
     if user.get("free_claimed"):
         return False, "claimed"
-    ok = activate_subscription(user_id, "free", FREE_DAYS, {"free_claimed": True})
+
+    ok = activate_subscription(
+        user_id,
+        "free",
+        FREE_DAYS,
+        {"free_claimed": True},
+    )
+
     if not ok:
         return False, "save"
+
     return True, FREE_DAYS
 
 
 def clear_subscription(user_id):
     ensure_user(user_id)
-    return bool(update_user(user_id, {
-        "subscription": {
-            "type": None,
-            "expire": None,
-            "total_days": 0,
-        }
-    }))
+
+    return bool(
+        update_user(
+            user_id,
+            {
+                "subscription": {
+                    "type": None,
+                    "expire": None,
+                    "total_days": 0,
+                }
+            },
+        )
+    )
 
 
 def create_license(days):
     days = int(days)
-    code = f"ANB-{days}-{secrets.token_hex(4).upper()}"
+
+    code = (
+        f"ANB-{days}-"
+        f"{secrets.token_hex(4).upper()}"
+    )
+
     licenses = load_licenses()
-    licenses[code] = {"days": days, "used": False, "used_by": None}
+
+    licenses[code] = {
+        "days": days,
+        "used": False,
+        "used_by": None,
+    }
+
     save_licenses(licenses)
+
     return code
 
 
 def redeem_license(user_id, code):
     code = (code or "").strip().upper()
+
     licenses = load_licenses()
     item = licenses.get(code)
+
     if not item:
         return False, "کد لایسنس غلط است."
+
     if item.get("used"):
         return False, "این کد قبلاً استفاده شده است."
+
     days = int(item.get("days") or 0)
+
     if days <= 0:
         return False, "کد نامعتبر است."
-    activate_subscription(user_id, "paid", days)
+
+    activate_subscription(
+        user_id,
+        "paid",
+        days,
+    )
+
     item["used"] = True
     item["used_by"] = str(user_id)
+
     licenses[code] = item
+
     save_licenses(licenses)
+
     return True, days
