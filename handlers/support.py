@@ -1,6 +1,6 @@
 # ==========================
 # Support Handler
-# Version 1.0.0
+# Version 1.1.0
 # ==========================
 
 from bale import Message
@@ -13,6 +13,8 @@ from force_join import (
 )
 
 from force_join_keyboard import force_join_keyboard
+
+from subscription import get_support_username
 
 
 async def on_message(message: Message):
@@ -34,8 +36,10 @@ async def on_message(message: Message):
 
             return
 
+    support_username = get_support_username()
+
     await message.reply(
         "📞 پشتیبانی\n\n"
         "اگر سؤال، مشکل یا پیشنهادی دارید، از طریق آیدی زیر با ما در ارتباط باشید.\n\n"
-        "👤 @pv_ahzar04"
+        f"👤 {support_username}"
     )
