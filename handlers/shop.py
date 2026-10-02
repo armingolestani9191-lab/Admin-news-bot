@@ -21,7 +21,10 @@ from admin_store import is_admin
 
 def back_only():
     keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("🔙 بازگشت", callback_data="m_home"), row=1)
+    keyboard.add(
+        InlineKeyboardButton("🔙 بازگشت", callback_data="m_home"),
+        row=1,
+    )
     return keyboard
 
 
@@ -34,40 +37,81 @@ def license_button():
 
 def admin_markup(req_id):
     return inline_keyboard([
-        [("✅ تایید", f"adm_ok_{req_id}"), ("❌ رد", f"adm_no_{req_id}")],
-        [("📝 ارسال پیام به کاربر", f"adm_msg_{req_id}")],
+        [
+            ("✅ تایید", f"adm_ok_{req_id}"),
+            ("❌ رد", f"adm_no_{req_id}"),
+        ],
+        [
+            ("📝 ارسال پیام به کاربر", f"adm_msg_{req_id}"),
+        ],
     ])
 
 
 def gift_confirm_menu():
-    return inline_keyboard([
-        [("✅ بله", "gift_confirm_yes"), ("❌ خیر", "gift_confirm_no")],
-    ])
+    keyboard = InlineKeyboardMarkup()
+
+    keyboard.add(
+        InlineKeyboardButton(
+            "✅ بله",
+            callback_data="gift_confirm_yes",
+        ),
+        row=1,
+    )
+
+    keyboard.add(
+        InlineKeyboardButton(
+            "❌ خیر",
+            callback_data="gift_confirm_no",
+        ),
+        row=1,
+    )
+
+    return keyboard
 
 
 def user_mention(user):
     username = getattr(user, "username", None) if user else None
+
     if username:
         return "@" + str(username).lstrip("@")
+
     name = getattr(user, "first_name", None) if user else None
+
     return name or "کاربر"
 
 
 def extract_photo(message):
     for attr in ("photos", "photo"):
         value = getattr(message, attr, None)
+
         if not value:
             continue
+
         if isinstance(value, str):
             return value
+
         if isinstance(value, list) and value:
             item = value[-1]
-            return getattr(item, "id", None) or getattr(item, "file_id", None) or item
-        return getattr(value, "id", None) or getattr(value, "file_id", None) or str(value)
+
+            return (
+                getattr(item, "id", None)
+                or getattr(item, "file_id", None)
+                or item
+            )
+
+        return (
+            getattr(value, "id", None)
+            or getattr(value, "file_id", None)
+            or str(value)
+        )
 
     document = getattr(message, "document", None)
+
     if document:
-        return getattr(document, "id", None) or getattr(document, "file_id", None)
+        return (
+            getattr(document, "id", None)
+            or getattr(document, "file_id", None)
+        )
 
     return None
 
@@ -76,6 +120,7 @@ async def on_callback(callback: CallbackQuery):
     data = callback.data or ""
     user_id = callback.from_user.id
 
+    # انتخاب اشتراک
     if data.startswith("plan_"):
         plan_id = data.replace("plan_", "", 1)
         plan = PLANS.get(plan_id)
@@ -83,7 +128,13 @@ async def on_callback(callback: CallbackQuery):
         if not plan:
             return
 
-        set_state(user_id, "choose_pay", {"plan_id": plan_id})
+        set_state(
+            user_id,
+            "choose_pay",
+            {
+                "plan_id": plan_id,
+            },
+        )
 
         price = f"{plan['price']:,}".replace(",", "٬")
 
@@ -96,18 +147,28 @@ async def on_callback(callback: CallbackQuery):
         )
         return
 
+    # کارت به کارت
     if data == "pay_card":
         state = get_state(user_id)
-        plan = PLANS.get((state.get("data") or {}).get("plan_id"), {})
 
-        set_state(user_id, "card_info", state.get("data") or {})
+        plan = PLANS.get(
+            (state.get("data") or {}).get("plan_id"),
+            {},
+        )
+
+        set_state(
+            user_id,
+            "card_info",
+            state.get("data") or {},
+        )
 
         price = f"{plan.get('price', 0):,}".replace(",", "٬")
 
         await edit_message(
             callback,
             f"💳 کارت به کارت\n\n"
-            f"مبلغ {price} تومن برای اشتراک {plan.get('title', '')} را به این کارت واریز کن:\n\n"
+            f"مبلغ {price} تومن برای اشتراک "
+            f"{plan.get('title', '')} را به این کارت واریز کن:\n\n"
             f"`{get_card_number()}`\n\n"
             "بعد روی «واریز کردم» بزن و عکس رسید را بفرست.",
             card_pay_menu(),
@@ -117,11 +178,17 @@ async def on_callback(callback: CallbackQuery):
     # پرداخت با پاکت هدیه
     if data == "pay_gift":
         state = get_state(user_id)
-        plan = PLANS.get((state.get("data") or {}).get("plan_id"), {})
 
         plan_id = (state.get("data") or {}).get("plan_id")
+        plan = PLANS.get(plan_id)
 
         if not plan:
+            await edit_message(
+                callback,
+                "❌ اطلاعات اشتراک پیدا نشد.\n"
+                "لطفاً دوباره از منوی خرید اشتراک اقدام کن.",
+                home_inline_menu(show_free=False),
+            )
             return
 
         set_state(
@@ -144,17 +211,20 @@ async def on_callback(callback: CallbackQuery):
         )
         return
 
-    # تایید خرید با پاکت هدیه
+    # تایید خرید پاکت هدیه
     if data == "gift_confirm_yes":
         state = get_state(user_id)
+
         plan_id = (state.get("data") or {}).get("plan_id")
-        plan = PLANS.get(plan_id) or {}
+        plan = PLANS.get(plan_id)
 
         if not plan:
             clear_state(user_id)
+
             await edit_message(
                 callback,
-                "❌ اطلاعات اشتراک پیدا نشد. دوباره از منوی اصلی اقدام کن.",
+                "❌ اطلاعات اشتراک پیدا نشد.\n"
+                "دوباره از منوی اصلی اقدام کن.",
                 home_inline_menu(show_free=False),
             )
             return
@@ -207,18 +277,18 @@ async def on_callback(callback: CallbackQuery):
         )
         return
 
-    # انصراف از خرید با پاکت هدیه
+    # لغو خرید پاکت هدیه
     if data == "gift_confirm_no":
         clear_state(user_id)
 
         await edit_message(
             callback,
-            "باشه 👍\n\n"
-            "خرید لغو شد.",
+            "❌ خرید لغو شد.",
             home_inline_menu(show_free=False),
         )
         return
 
+    # واریز کارت به کارت
     if data == "pay_paid":
         state = get_state(user_id)
 
@@ -236,6 +306,7 @@ async def on_callback(callback: CallbackQuery):
         )
         return
 
+    # تایید درخواست توسط ادمین
     if data.startswith("adm_ok_"):
         if not is_admin(callback.from_user.id):
             return
@@ -266,7 +337,8 @@ async def on_callback(callback: CallbackQuery):
             item["user_id"],
             "🎉 پرداخت تایید شد\n\n"
             f"🔑 کد لایسنس تو:\n{code}\n\n"
-            f"📅 اشتراک: {item.get('title') or str(days) + ' روز'}\n\n"
+            f"📅 اشتراک: "
+            f"{item.get('title') or str(days) + ' روز'}\n\n"
             "این کد را نزد کسی نده.\n"
             "روی دکمه زیر بزن و کد را وارد کن.",
             license_button(),
@@ -278,6 +350,7 @@ async def on_callback(callback: CallbackQuery):
         )
         return
 
+    # رد درخواست توسط ادمین
     if data.startswith("adm_no_"):
         if not is_admin(callback.from_user.id):
             return
@@ -308,6 +381,7 @@ async def on_callback(callback: CallbackQuery):
         )
         return
 
+    # پیام ادمین به کاربر
     if data.startswith("adm_msg_"):
         if not is_admin(callback.from_user.id):
             return
@@ -317,7 +391,9 @@ async def on_callback(callback: CallbackQuery):
         set_state(
             callback.from_user.id,
             "admin_msg",
-            {"req_id": req_id},
+            {
+                "req_id": req_id,
+            },
         )
 
         await edit_message(
@@ -332,10 +408,13 @@ async def on_message(message: Message):
         return
 
     user_id = message.from_user.id
+
     state = get_state(user_id)
     name = state.get("state")
+
     text = (message.content or "").strip()
 
+    # ورود لایسنس
     if name == "enter_license":
         ok, result = redeem_license(user_id, text)
 
@@ -354,8 +433,10 @@ async def on_message(message: Message):
                 "اگر کد را اشتباه زدی دوباره امتحان کن.",
                 components=home_components(user_id),
             )
+
         return
 
+    # پیام ادمین
     if name == "admin_msg" and is_admin(user_id):
         req_id = (state.get("data") or {}).get("req_id")
 
@@ -373,13 +454,16 @@ async def on_message(message: Message):
         await message.reply(
             "✅ پیام برای کاربر ارسال شد."
         )
+
         return
 
+    # رسید کارت به کارت
     if name == "wait_receipt":
         plan_id = (state.get("data") or {}).get("plan_id")
         plan = PLANS.get(plan_id) or {}
 
         req_id = str(int(time.time())) + str(user_id)
+
         mention = user_mention(message.from_user)
         note = text or "بدون توضیح"
 
@@ -446,4 +530,5 @@ async def on_message(message: Message):
             "⏳ حداکثر چند ساعت صبر کن تا بررسی شود.",
             components=home_components(user_id),
         )
+
         return
