@@ -12,7 +12,7 @@ import os
 
 BOT_TOKEN = os.getenv(
     "BALE_BOT_TOKEN",
-    "1159197217:ZwrWy4kXoTdu7hSMHMWjjaQKm-uM1qlUCYs",
+    "2128373812:rkIklKKjnU2WQBI6fwcDC9Yi4t4-nebBSdI",
 )
 
 
