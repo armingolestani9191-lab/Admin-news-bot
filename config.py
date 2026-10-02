@@ -11,7 +11,7 @@ import os
 # ==========================
 
 BOT_TOKEN = os.getenv(
-    "BALE_BOT_TOKEN",
+    "1484088959:653ntnnmPdDkkjwfI7IvZITjxNZ1bSwbnpw",
     # توکن فعلی خودت اینجا باقی بماند
 )
 
