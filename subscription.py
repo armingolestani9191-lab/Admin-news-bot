@@ -335,3 +335,6 @@ def redeem_license(user_id, code):
     save_licenses(licenses)
 
     return True, days
+
+
+#تست
