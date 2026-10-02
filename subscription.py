@@ -136,13 +136,16 @@ def parse_expire(value):
 
 def subscription_info(user_id):
     user = get_user(user_id) or {}
+
     sub = (
         user.get("subscription")
         if isinstance(user.get("subscription"), dict)
         else {}
     )
 
-    kind = str(sub.get("type") or "none").strip().lower() or "none"
+    kind = str(
+        sub.get("type") or "none"
+    ).strip().lower() or "none"
 
     expire = parse_expire(
         sub.get("expire")
@@ -196,13 +199,18 @@ def subscription_info(user_id):
 
 
 def has_subscription(user_id):
-    return bool(subscription_info(user_id)["active"])
+    return bool(
+        subscription_info(user_id)["active"]
+    )
 
 
 def is_free_user(user_id):
     info = subscription_info(user_id)
 
-    return info["active"] and info["type"] == "free"
+    return (
+        info["active"]
+        and info["type"] == "free"
+    )
 
 
 def max_channels_for(user_id):
@@ -216,25 +224,73 @@ def max_channels_for(user_id):
     )
 
 
-def activate_subscription(user_id, kind, days, extra=None):
+def activate_subscription(
+    user_id,
+    kind,
+    days,
+    extra=None,
+):
     ensure_user(user_id)
 
-    expire = today_tehran() + timedelta(
-        days=max(1, int(days))
+    days = max(1, int(days))
+    today = today_tehran()
+
+    user = get_user(user_id, force=True) or {}
+
+    current_sub = (
+        user.get("subscription")
+        if isinstance(user.get("subscription"), dict)
+        else {}
     )
+
+    current_expire = parse_expire(
+        current_sub.get("expire")
+        or current_sub.get("expires")
+        or current_sub.get("expire_date")
+    )
+
+    current_remaining = 0
+
+    if current_expire and current_expire >= today:
+        current_remaining = (
+            current_expire - today
+        ).days
+
+        if current_remaining <= 0:
+            current_remaining = 1
+
+    # اگر اشتراک فعلی فعال باشد،
+    # روزهای باقی‌مانده را با روزهای جدید جمع می‌کنیم.
+    if current_remaining > 0:
+        total_days = current_remaining + days
+
+        expire = today + timedelta(
+            days=total_days
+        )
+    else:
+        total_days = days
+
+        expire = today + timedelta(
+            days=days
+        )
 
     payload = {
         "subscription": {
             "type": kind,
             "expire": expire.isoformat(),
-            "total_days": int(days),
+            "total_days": total_days,
         }
     }
 
     if isinstance(extra, dict):
         payload.update(extra)
 
-    return bool(update_user(user_id, payload))
+    return bool(
+        update_user(
+            user_id,
+            payload,
+        )
+    )
 
 
 def claim_free_subscription(
@@ -242,10 +298,18 @@ def claim_free_subscription(
     first_name="",
     username=None,
 ):
-    ensure_user(user_id, first_name, username)
+    ensure_user(
+        user_id,
+        first_name,
+        username,
+    )
 
     info = subscription_info(user_id)
-    user = get_user(user_id, force=True) or {}
+
+    user = get_user(
+        user_id,
+        force=True,
+    ) or {}
 
     if info["active"]:
         return False, "already"
@@ -257,7 +321,9 @@ def claim_free_subscription(
         user_id,
         "free",
         FREE_DAYS,
-        {"free_claimed": True},
+        {
+            "free_claimed": True,
+        },
     )
 
     if not ok:
@@ -321,11 +387,14 @@ def redeem_license(user_id, code):
     if days <= 0:
         return False, "کد نامعتبر است."
 
-    activate_subscription(
+    ok = activate_subscription(
         user_id,
         "paid",
         days,
     )
+
+    if not ok:
+        return False, "خطا در فعال‌سازی اشتراک. دوباره تلاش کن."
 
     item["used"] = True
     item["used_by"] = str(user_id)
@@ -335,6 +404,3 @@ def redeem_license(user_id, code):
     save_licenses(licenses)
 
     return True, days
-
-
-#تست
