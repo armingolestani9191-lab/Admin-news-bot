@@ -19,6 +19,12 @@ from storage import (
 
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 
+_SESSION = requests.Session()
+
+_SESSION.headers.update({
+    "Content-Type": "application/json"
+})
+
 
 # ==========================
 # Owner
@@ -43,12 +49,6 @@ JOIN_KEY = "force_join_channels"
 # ==========================
 
 def extra_admin_ids():
-    """
-    Return additional admin IDs stored in SQLite.
-
-    This replaces admins.json.
-    """
-
     raw = get_value(
         ADMINS_NAMESPACE,
         ADMINS_KEY,
@@ -73,18 +73,9 @@ def extra_admin_ids():
 
 
 def all_admin_ids():
-    """
-    Return all admin IDs.
-
-    ADMIN_IDS from subscription.py remain the
-    permanent/default admins, while additional
-    admins are stored in SQLite.
-    """
-
     ids = []
 
     for item in list(ADMIN_IDS) + extra_admin_ids():
-
         try:
             value = int(item)
         except Exception:
@@ -97,10 +88,6 @@ def all_admin_ids():
 
 
 def is_admin(user_id):
-    """
-    Check whether a user is an admin.
-    """
-
     try:
         return int(user_id) in set(
             all_admin_ids()
@@ -110,10 +97,6 @@ def is_admin(user_id):
 
 
 def add_admin(user_id):
-    """
-    Add an additional admin.
-    """
-
     try:
         user_id = int(user_id)
     except Exception:
@@ -136,12 +119,6 @@ def add_admin(user_id):
 
 
 def remove_admin(user_id):
-    """
-    Remove an additional admin.
-
-    The owner cannot be removed.
-    """
-
     try:
         user_id = int(user_id)
     except Exception:
@@ -176,12 +153,32 @@ def _norm(value):
     return str(value).strip()
 
 
-def _join_keys(item):
-    """
-    Generate comparable keys for a force-join
-    channel.
-    """
+def _normalize_username(value):
+    value = _norm(value)
 
+    if not value:
+        return ""
+
+    if (
+        value.startswith("https://")
+        or value.startswith("http://")
+    ):
+        value = (
+            value
+            .rstrip("/")
+            .split("/")[-1]
+        )
+
+    if (
+        not value.startswith("@")
+        and not value.lstrip("-").isdigit()
+    ):
+        value = "@" + value
+
+    return value
+
+
+def _join_keys(item):
     keys = set()
 
     if not isinstance(item, dict):
@@ -193,20 +190,12 @@ def _join_keys(item):
     values = [
         item.get("username"),
         item.get("id"),
-        item,
     ]
 
     for value in values:
-
         text = _norm(value)
 
         if not text:
-            continue
-
-        if (
-            text.startswith("{")
-            or text.startswith("<")
-        ):
             continue
 
         low = text.lower()
@@ -224,14 +213,6 @@ def _join_keys(item):
                 "@" + low
             )
 
-        if (
-            low.startswith("@")
-            and len(low) > 1
-        ):
-            keys.add(
-                low[1:]
-            )
-
     return {
         key
         for key in keys
@@ -241,36 +222,37 @@ def _join_keys(item):
 
 def _normalize_row(item):
     """
-    Normalize a force-join channel entry.
-
-    Keeps the same output structure as the old
-    JSON implementation.
+    تبدیل اطلاعات کانال به ساختار استاندارد.
     """
 
     if not isinstance(item, dict):
-
-        text = _norm(item)
+        text = _normalize_username(item)
 
         if not text:
             return None
-
-        if (
-            not text.startswith("@")
-            and not text.lstrip("-").isdigit()
-        ):
-            text = "@" + text
 
         return {
             "id": text,
             "username": text,
         }
 
-    username = _norm(
-        item.get("username")
-        or item.get("id")
+    channel_id = item.get("id")
+    username = item.get("username")
+
+    channel_id = (
+        channel_id
+        if channel_id is not None
+        else ""
     )
 
-    channel_id = item.get("id")
+    username = _normalize_username(
+        username
+    )
+
+    if not username:
+        username = _normalize_username(
+            channel_id
+        )
 
     if (
         channel_id is None
@@ -278,19 +260,8 @@ def _normalize_row(item):
     ):
         channel_id = username
 
-    if not username:
-        username = _norm(
-            channel_id
-        )
-
-    if not username:
+    if not username and not channel_id:
         return None
-
-    if (
-        not username.startswith("@")
-        and not str(username).lstrip("-").isdigit()
-    ):
-        username = "@" + username
 
     return {
         "id": channel_id,
@@ -299,35 +270,28 @@ def _normalize_row(item):
 
 
 def _clean_list(data):
-    """
-    Normalize, remove duplicates and keep the
-    original maximum of 3 force-join channels.
-    """
-
     clean = []
     seen = set()
 
     for item in data or []:
-
         row = _normalize_row(item)
 
         if not row:
             continue
 
-        marker = tuple(
-            sorted(
-                _join_keys(row)
-            )
-        )
+        keys = _join_keys(row)
 
-        if not marker:
+        if not keys:
             continue
+
+        marker = tuple(
+            sorted(keys)
+        )
 
         if marker in seen:
             continue
 
         seen.add(marker)
-
         clean.append(row)
 
     return clean[:3]
@@ -338,10 +302,6 @@ def _clean_list(data):
 # ==========================
 
 def save_join_channels(items):
-    """
-    Save force-join channels into SQLite.
-    """
-
     clean = _clean_list(items)
 
     set_value(
@@ -354,14 +314,6 @@ def save_join_channels(items):
 
 
 def load_join_channels():
-    """
-    Load force-join channels from SQLite.
-
-    If nothing has ever been stored, the original
-    FORCE_JOIN_CHANNELS configuration is used as
-    the initial data.
-    """
-
     raw = get_value(
         JOIN_NAMESPACE,
         JOIN_KEY,
@@ -369,7 +321,6 @@ def load_join_channels():
     )
 
     if raw is None:
-
         seeded = _clean_list(
             list(
                 FORCE_JOIN_CHANNELS or []
@@ -384,33 +335,23 @@ def load_join_channels():
 
 
 def add_join_channel(channel):
-    """
-    Add a force-join channel.
-    """
-
-    row = _normalize_row(
-        channel
-    )
+    row = _normalize_row(channel)
 
     if not row:
-        return False, "کانال پیدا نشد."
+        return False, "⚠️ اطلاعات کانال معتبر نیست."
 
     items = load_join_channels()
 
-    new_keys = _join_keys(
-        row
-    )
+    new_keys = _join_keys(row)
 
-    if any(
-        not _join_keys(item).isdisjoint(
+    for item in items:
+        if not _join_keys(item).isdisjoint(
             new_keys
-        )
-        for item in items
-    ):
-        return False, "این کانال قبلاً هست."
+        ):
+            return False, "⚠️ این کانال قبلاً اضافه شده."
 
     if len(items) >= 3:
-        return False, "سقف ۳ کانال پر است."
+        return False, "⚠️ سقف ۳ کانال پر است."
 
     items.append(row)
 
@@ -418,33 +359,22 @@ def add_join_channel(channel):
         items
     )
 
-    return True, "اضافه شد."
+    return True, "کانال با موفقیت اضافه شد."
 
 
 def remove_join_channel(text):
-    """
-    Remove a force-join channel by username/id.
-    """
-
     if isinstance(text, dict):
-
-        raw_keys = _join_keys(
-            text
-        )
-
+        raw_keys = _join_keys(text)
     else:
-
         raw = _norm(text)
 
         if not raw:
             return False
 
-        raw_keys = _join_keys(
-            {
-                "username": raw,
-                "id": raw,
-            }
-        )
+        raw_keys = _join_keys({
+            "username": raw,
+            "id": raw,
+        })
 
     if not raw_keys:
         return False
@@ -470,10 +400,6 @@ def remove_join_channel(text):
 
 
 def remove_join_channel_at(index):
-    """
-    Remove a force-join channel by its list index.
-    """
-
     items = load_join_channels()
 
     try:
@@ -502,77 +428,76 @@ def remove_join_channel_at(index):
 
 def resolve_channel(username):
     """
-    Resolve a Bale channel using getChat.
+    کانال را از Bale API پیدا می‌کند.
 
-    This logic is unchanged from the previous
-    implementation.
+    اگر کانال واقعاً پیدا نشود:
+        None
+
+    دیگر اطلاعات جعلی ذخیره نمی‌شود.
     """
 
-    username = _norm(
+    username = _normalize_username(
         username
     )
 
     if not username:
         return None
 
-    if (
-        username.startswith("https://")
-        or username.startswith("http://")
-    ):
-        username = (
-            username
-            .rstrip("/")
-            .split("/")[-1]
-        )
-
-    if (
-        not username.startswith("@")
-        and not username.lstrip("-").isdigit()
-    ):
-        username = "@" + username
-
     try:
-
-        response = requests.post(
+        response = _SESSION.post(
             f"{BASE_URL}/getChat",
             json={
                 "chat_id": username,
             },
-            timeout=10,
+            timeout=5,
         )
+
+        if response.status_code != 200:
+            return None
 
         payload = response.json()
 
-        if payload.get("ok"):
+        if not isinstance(payload, dict):
+            return None
 
-            result = (
-                payload.get("result")
-                or {}
+        if not payload.get("ok"):
+            return None
+
+        result = (
+            payload.get("result")
+            or {}
+        )
+
+        if not isinstance(result, dict):
+            return None
+
+        channel_id = result.get("id")
+
+        if channel_id is None:
+            return None
+
+        real_username = result.get(
+            "username"
+        )
+
+        if real_username:
+            real_username = (
+                "@"
+                + str(real_username).lstrip("@")
             )
+        else:
+            # اگر کانال یوزرنیم عمومی ندارد،
+            # همان ورودی کاربر را نگه می‌داریم.
+            real_username = username
 
-            uname = result.get(
-                "username"
-            )
-
-            return {
-                "id": (
-                    result.get("id")
-                    if result.get("id")
-                    is not None
-                    else username
-                ),
-
-                "username": (
-                    "@" + uname
-                    if uname
-                    else username
-                ),
-            }
-
-    except Exception:
-        pass
-
-    return {
-        "id": username,
-        "username": username,
+        return {
+            "id": channel_id,
+            "username": real_username,
         }
+
+    except Exception as error:
+        print(
+            "resolve_channel error:",
+            error,
+        )
+        return None
