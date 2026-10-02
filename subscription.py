@@ -12,45 +12,107 @@ from storage import get_value, set_value
 from users import ensure_user, get_user, update_user
 
 
+# ══════════════════════════════════════════════════════════════
+# 💰 قیمت اشتراک‌ها
+# ══════════════════════════════════════════════════════════════
+
 PLANS = {
-    "10": {"days": 10, "price": 20000, "title": "۱۰ روز"},
-    "20": {"days": 20, "price": 35000, "title": "۲۰ روز"},
-    "30": {"days": 30, "price": 50000, "title": "۳۰ روز (۱ ماه)"},
-    "60": {"days": 60, "price": 80000, "title": "۶۰ روز (۲ ماه)"},
+    "10": {
+        "days": 10,
+        "price": 15000,
+        "title": "۱۰ روز",
+    },
+    "20": {
+        "days": 20,
+        "price": 25000,
+        "title": "۲۰ روز",
+    },
+    "30": {
+        "days": 30,
+        "price": 35000,
+        "title": "۳۰ روز (۱ ماه)",
+    },
+    "60": {
+        "days": 60,
+        "price": 55000,
+        "title": "۶۰ روز (۲ ماه)",
+    },
 }
+
+
+# ══════════════════════════════════════════════════════════════
+# 🎁 تنظیمات اشتراک رایگان
+# ══════════════════════════════════════════════════════════════
 
 FREE_DAYS = 3
 FREE_MAX_CHANNELS = 1
 PAID_MAX_CHANNELS = 3
-FREE_ALLOWED_CATEGORIES = ["ورزش", "آب‌وهوا"]
-FREE_LOCKED_TIMES = {1, 5}
+
+FREE_ALLOWED_CATEGORIES = [
+    "ورزش",
+    "آب‌وهوا",
+]
+
+FREE_LOCKED_TIMES = {
+    1,
+    5,
+}
+
+
+# ══════════════════════════════════════════════════════════════
+# 💳 تنظیمات کارت
+# ══════════════════════════════════════════════════════════════
 
 _DEFAULT_CARD = os.getenv(
     "CARD_NUMBER",
     "6037-9975-1111-2222",
 )
 
-ADMIN_IDS = [595450272]
+ADMIN_IDS = [
+    595450272,
+]
+
+
+# ══════════════════════════════════════════════════════════════
+# 🗄️ کلیدهای ذخیره‌سازی
+# ══════════════════════════════════════════════════════════════
 
 _STORAGE_NAMESPACE = "subscription"
+
 _LICENSES_KEY = "licenses"
 _PAYMENTS_KEY = "payments"
 _CARD_KEY = "card"
 
 
+# ══════════════════════════════════════════════════════════════
+# ⏰ زمان تهران
+# ══════════════════════════════════════════════════════════════
+
 def today_tehran():
     if TEHRAN:
         return datetime.now(TEHRAN).date()
+
     return date.today()
 
 
+# ══════════════════════════════════════════════════════════════
+# 💳 کارت بانکی
+# ══════════════════════════════════════════════════════════════
+
 def get_card_number():
-    data = get_value(_STORAGE_NAMESPACE, _CARD_KEY, {})
+    data = get_value(
+        _STORAGE_NAMESPACE,
+        _CARD_KEY,
+        {},
+    )
 
     number = ""
 
     if isinstance(data, dict):
-        number = str(data.get("number") or "").strip()
+        number = str(
+            data.get("number") or ""
+        ).strip()
+
     elif isinstance(data, str):
         number = data.strip()
 
@@ -58,8 +120,15 @@ def get_card_number():
 
 
 def set_card_number(raw):
-    text = str(raw or "").strip().replace(" ", "")
-    digits = "".join(ch for ch in text if ch.isdigit())
+    text = str(raw or "").strip().replace(
+        " ",
+        "",
+    )
+
+    digits = "".join(
+        ch for ch in text
+        if ch.isdigit()
+    )
 
     if len(digits) < 12 or len(digits) > 19:
         return None
@@ -77,7 +146,9 @@ def set_card_number(raw):
     set_value(
         _STORAGE_NAMESPACE,
         _CARD_KEY,
-        {"number": number},
+        {
+            "number": number,
+        },
     )
 
     return number
@@ -86,6 +157,10 @@ def set_card_number(raw):
 CARD_NUMBER = get_card_number()
 
 
+# ══════════════════════════════════════════════════════════════
+# 🔑 لایسنس‌ها
+# ══════════════════════════════════════════════════════════════
+
 def load_licenses():
     data = get_value(
         _STORAGE_NAMESPACE,
@@ -93,7 +168,11 @@ def load_licenses():
         {},
     )
 
-    return data if isinstance(data, dict) else {}
+    return (
+        data
+        if isinstance(data, dict)
+        else {}
+    )
 
 
 def save_licenses(data):
@@ -104,6 +183,10 @@ def save_licenses(data):
     )
 
 
+# ══════════════════════════════════════════════════════════════
+# 💰 پرداخت‌ها
+# ══════════════════════════════════════════════════════════════
+
 def load_payments():
     data = get_value(
         _STORAGE_NAMESPACE,
@@ -111,7 +194,11 @@ def load_payments():
         {},
     )
 
-    return data if isinstance(data, dict) else {}
+    return (
+        data
+        if isinstance(data, dict)
+        else {}
+    )
 
 
 def save_payments(data):
@@ -122,6 +209,10 @@ def save_payments(data):
     )
 
 
+# ══════════════════════════════════════════════════════════════
+# 📅 تبدیل تاریخ انقضا
+# ══════════════════════════════════════════════════════════════
+
 def parse_expire(value):
     if not value:
         return None
@@ -130,16 +221,24 @@ def parse_expire(value):
 
     try:
         return date.fromisoformat(text)
+
     except Exception:
         return None
 
+
+# ══════════════════════════════════════════════════════════════
+# 📊 اطلاعات اشتراک
+# ══════════════════════════════════════════════════════════════
 
 def subscription_info(user_id):
     user = get_user(user_id) or {}
 
     sub = (
         user.get("subscription")
-        if isinstance(user.get("subscription"), dict)
+        if isinstance(
+            user.get("subscription"),
+            dict,
+        )
         else {}
     )
 
@@ -153,14 +252,19 @@ def subscription_info(user_id):
         or sub.get("expire_date")
     )
 
-    total = int(sub.get("total_days") or 0)
+    total = int(
+        sub.get("total_days") or 0
+    )
 
     remaining = 0
     active = False
+
     today = today_tehran()
 
     if expire and expire >= today:
-        remaining = (expire - today).days
+        remaining = (
+            expire - today
+        ).days
 
         if remaining <= 0:
             remaining = 1
@@ -172,40 +276,76 @@ def subscription_info(user_id):
         remaining = 0
         active = False
 
-    if kind in (None, "none", "", "expired") and not active:
-        kind = "none" if not expire else "expired"
+    if kind in (
+        None,
+        "none",
+        "",
+        "expired",
+    ) and not active:
+        kind = (
+            "none"
+            if not expire
+            else "expired"
+        )
 
     if not active:
-        kind = "none" if kind == "none" else "expired"
+        kind = (
+            "none"
+            if kind == "none"
+            else "expired"
+        )
+
         remaining = 0
 
     label = "ندارد"
 
     if active and kind == "free":
         label = "رایگان"
+
     elif active:
         label = "پولی"
 
     return {
-        "type": kind if active else (
-            "none" if kind == "none" else "expired"
+        "type": (
+            kind
+            if active
+            else (
+                "none"
+                if kind == "none"
+                else "expired"
+            )
         ),
         "active": active,
-        "expire": expire.isoformat() if expire else None,
+        "expire": (
+            expire.isoformat()
+            if expire
+            else None
+        ),
         "remaining": remaining,
-        "total": total or remaining,
+        "total": (
+            total
+            or remaining
+        ),
         "label": label,
     }
 
 
+# ══════════════════════════════════════════════════════════════
+# ✅ بررسی اشتراک
+# ══════════════════════════════════════════════════════════════
+
 def has_subscription(user_id):
     return bool(
-        subscription_info(user_id)["active"]
+        subscription_info(user_id)[
+            "active"
+        ]
     )
 
 
 def is_free_user(user_id):
-    info = subscription_info(user_id)
+    info = subscription_info(
+        user_id
+    )
 
     return (
         info["active"]
@@ -224,6 +364,19 @@ def max_channels_for(user_id):
     )
 
 
+# ══════════════════════════════════════════════════════════════
+# 🔥 فعال‌سازی اشتراک
+# ══════════════════════════════════════════════════════════════
+#
+# اگر کاربر اشتراک فعال داشته باشد:
+#
+# اشتراک قبلی + اشتراک جدید
+#
+# مثال:
+# ۱ روز باقی‌مانده + ۲۰ روز جدید = ۲۱ روز
+#
+# ══════════════════════════════════════════════════════════════
+
 def activate_subscription(
     user_id,
     kind,
@@ -232,14 +385,24 @@ def activate_subscription(
 ):
     ensure_user(user_id)
 
-    days = max(1, int(days))
+    days = max(
+        1,
+        int(days),
+    )
+
     today = today_tehran()
 
-    user = get_user(user_id, force=True) or {}
+    user = get_user(
+        user_id,
+        force=True,
+    ) or {}
 
     current_sub = (
         user.get("subscription")
-        if isinstance(user.get("subscription"), dict)
+        if isinstance(
+            user.get("subscription"),
+            dict,
+        )
         else {}
     )
 
@@ -251,7 +414,10 @@ def activate_subscription(
 
     current_remaining = 0
 
-    if current_expire and current_expire >= today:
+    if (
+        current_expire
+        and current_expire >= today
+    ):
         current_remaining = (
             current_expire - today
         ).days
@@ -259,19 +425,30 @@ def activate_subscription(
         if current_remaining <= 0:
             current_remaining = 1
 
-    # اگر اشتراک فعلی فعال باشد،
-    # روزهای باقی‌مانده را با روزهای جدید جمع می‌کنیم.
+    # 🔥 جمع اشتراک قبلی و جدید
     if current_remaining > 0:
-        total_days = current_remaining + days
 
-        expire = today + timedelta(
-            days=total_days
+        total_days = (
+            current_remaining
+            + days
         )
+
+        expire = (
+            today
+            + timedelta(
+                days=total_days
+            )
+        )
+
     else:
+
         total_days = days
 
-        expire = today + timedelta(
-            days=days
+        expire = (
+            today
+            + timedelta(
+                days=days
+            )
         )
 
     payload = {
@@ -293,6 +470,10 @@ def activate_subscription(
     )
 
 
+# ══════════════════════════════════════════════════════════════
+# 🎁 اشتراک رایگان
+# ══════════════════════════════════════════════════════════════
+
 def claim_free_subscription(
     user_id,
     first_name="",
@@ -304,7 +485,9 @@ def claim_free_subscription(
         username,
     )
 
-    info = subscription_info(user_id)
+    info = subscription_info(
+        user_id
+    )
 
     user = get_user(
         user_id,
@@ -332,6 +515,10 @@ def claim_free_subscription(
     return True, FREE_DAYS
 
 
+# ══════════════════════════════════════════════════════════════
+# 🗑️ حذف اشتراک
+# ══════════════════════════════════════════════════════════════
+
 def clear_subscription(user_id):
     ensure_user(user_id)
 
@@ -348,6 +535,10 @@ def clear_subscription(user_id):
         )
     )
 
+
+# ══════════════════════════════════════════════════════════════
+# 🔑 ساخت کد لایسنس
+# ══════════════════════════════════════════════════════════════
 
 def create_license(days):
     days = int(days)
@@ -370,23 +561,45 @@ def create_license(days):
     return code
 
 
-def redeem_license(user_id, code):
-    code = (code or "").strip().upper()
+# ══════════════════════════════════════════════════════════════
+# 🎟️ استفاده از کد لایسنس
+# ══════════════════════════════════════════════════════════════
+
+def redeem_license(
+    user_id,
+    code,
+):
+    code = (
+        code or ""
+    ).strip().upper()
 
     licenses = load_licenses()
+
     item = licenses.get(code)
 
     if not item:
-        return False, "کد لایسنس غلط است."
+        return (
+            False,
+            "کد لایسنس غلط است.",
+        )
 
     if item.get("used"):
-        return False, "این کد قبلاً استفاده شده است."
+        return (
+            False,
+            "این کد قبلاً استفاده شده است.",
+        )
 
-    days = int(item.get("days") or 0)
+    days = int(
+        item.get("days") or 0
+    )
 
     if days <= 0:
-        return False, "کد نامعتبر است."
+        return (
+            False,
+            "کد نامعتبر است.",
+        )
 
+    # 🔥 اشتراک جدید به اشتراک قبلی اضافه می‌شود
     ok = activate_subscription(
         user_id,
         "paid",
@@ -394,10 +607,15 @@ def redeem_license(user_id, code):
     )
 
     if not ok:
-        return False, "خطا در فعال‌سازی اشتراک. دوباره تلاش کن."
+        return (
+            False,
+            "خطا در فعال‌سازی اشتراک. دوباره تلاش کن.",
+        )
 
     item["used"] = True
-    item["used_by"] = str(user_id)
+    item["used_by"] = str(
+        user_id
+    )
 
     licenses[code] = item
 
