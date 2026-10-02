@@ -12,8 +12,20 @@ import os
 
 BOT_TOKEN = os.getenv(
     "BALE_BOT_TOKEN",
-    "1484088959:653ntnnmPdDkkjwfI7IvZITjxNZ1bSwbnpw",
+    # توکن فعلی خودت اینجا باقی بماند
 )
+
+
+# ==========================
+# Permanent Admins
+# ==========================
+
+# Admin IDs defined here are permanent and do not depend on SQLite.
+# Additional admins can still be added from inside the bot and are stored in SQLite.
+
+ADMIN_IDS = [
+    595450272,
+]
 
 
 # ==========================
@@ -40,23 +52,14 @@ else:
 # ==========================
 
 MAX_SENT_NEWS = 5000
-
 CHECK_EMPTY_INTERVAL = 60
-
 SEND_INTERVALS = [60, 300, 600]
-
 MAX_CHANNELS = 3
-
 RSS_CACHE_SECONDS = 20
-
 FORBIDDEN_COOLDOWN = 1800
-
 DEFAULT_SEND_INTERVAL = 1
-
 PREFER_NEWS_AGE_SECONDS = 8 * 60
-
 MAX_NEWS_AGE_SECONDS = 30 * 60
-
 FALLBACK_NEWS_AGE_SECONDS = 30 * 60
 
 
