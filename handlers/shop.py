@@ -28,11 +28,25 @@ def back_only():
     return keyboard
 
 
-def license_button():
-    return inline_keyboard([
-        [("🔑 ورود کد لایسنس", "m_license")],
-        [("🏠 منوی اصلی", "m_home")],
-    ])
+def license_button(code):
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "🔑 ورود کد لایسنس",
+                    "callback_data": "m_license",
+                }
+            ],
+            [
+                {
+                    "text": "📋 کپی کد لایسنس",
+                    "copy_text": {
+                        "text": str(code),
+                    },
+                }
+            ],
+        ]
+    }
 
 
 def admin_markup(req_id):
@@ -341,7 +355,7 @@ async def on_callback(callback: CallbackQuery):
             f"{item.get('title') or str(days) + ' روز'}\n\n"
             "این کد را نزد کسی نده.\n"
             "روی دکمه زیر بزن و کد را وارد کن.",
-            license_button(),
+            license_button(code),
         )
 
         await edit_message(
