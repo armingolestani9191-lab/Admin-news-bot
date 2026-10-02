@@ -1,3 +1,4 @@
+import os
 import secrets
 from datetime import date, datetime, timedelta
 
@@ -23,7 +24,12 @@ FREE_MAX_CHANNELS = 1
 PAID_MAX_CHANNELS = 3
 FREE_ALLOWED_CATEGORIES = ["ورزش", "آب‌وهوا"]
 FREE_LOCKED_TIMES = {1, 5}
-_DEFAULT_CARD = "6037-9975-1111-2222"
+
+_DEFAULT_CARD = os.getenv(
+    "CARD_NUMBER",
+    "6037-9975-1111-2222",
+)
+
 ADMIN_IDS = [595450272]
 
 _STORAGE_NAMESPACE = "subscription"
