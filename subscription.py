@@ -8,8 +8,8 @@ import secrets
 import string
 
 from storage import (
-    get_setting,
-    set_setting,
+    get_value,
+    set_value,
 )
 
 
@@ -55,8 +55,9 @@ DEFAULT_PLANS = {
 # Settings Keys
 # ==========================
 
-CARD_KEY = "subscription_card_number"
+SETTINGS_NAMESPACE = "subscription"
 
+CARD_KEY = "subscription_card_number"
 SUPPORT_KEY = "support_username"
 
 
@@ -66,7 +67,11 @@ SUPPORT_KEY = "support_username"
 
 def _setting(key, default=None):
     try:
-        value = get_setting(key)
+        value = get_value(
+            SETTINGS_NAMESPACE,
+            key,
+            default,
+        )
 
         if value is None:
             return default
@@ -79,7 +84,8 @@ def _setting(key, default=None):
 
 def _save_setting(key, value):
     try:
-        return set_setting(
+        return set_value(
+            SETTINGS_NAMESPACE,
             key,
             value,
         )
@@ -154,11 +160,11 @@ class _Plans(dict):
     """
     Dynamic dictionary.
 
-    This keeps compatibility with existing code:
+    Keeps compatibility with existing code:
 
         PLANS.get("30")
 
-    while still loading the latest prices
+    while loading the latest prices
     from SQLite.
     """
 
