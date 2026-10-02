@@ -612,7 +612,7 @@ async def on_callback(callback: CallbackQuery):
     if data == "m_support":
         await edit_message(
             callback,
-            "📞 پشتیبانی\n\n👤 @pv_ahzar04",
+            "📞 پشتیبانی\n\n👤 @pv_ahzar",
             home_components(user_id),
         )
         return
