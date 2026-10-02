@@ -159,7 +159,7 @@ def _user_rows():
 
         info = subscription_info(user_id)
 
-        # فقط کاربران دارای اشتراک فعال در دکمه‌ها نمایش داده شوند
+        # فقط کاربران دارای اشتراک فعال
         if not info["active"]:
             continue
 
@@ -180,10 +180,7 @@ def _user_rows():
         )
 
     rows.sort(
-        key=lambda item: (
-            not item[2]["active"],
-            item[1].lower(),
-        )
+        key=lambda item: item[1].lower()
     )
 
     return rows
@@ -204,20 +201,26 @@ def users_manage_text(page=0):
     )
 
     per_page = 8
+
     total_pages = max(
         1,
         (len(rows) + per_page - 1) // per_page,
     )
+
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 0
 
     page = max(
         0,
         min(page, total_pages - 1),
     )
 
-    chunk = rows[
-        page * per_page:
-        (page + 1) * per_page
-    ]
+    start = page * per_page
+    end = start + per_page
+
+    chunk = rows[start:end]
 
     lines = [
         "👤 مدیریت کاربران",
@@ -257,15 +260,10 @@ def users_manage_text(page=0):
 
     else:
         for user_id, mention, info in chunk:
-            if info["active"]:
-                label = (
-                    f"⭐ {mention} | "
-                    f"{info['remaining']}روز"
-                )
-            else:
-                label = (
-                    f"{mention} | بدون اشتراک"
-                )
+            label = (
+                f"⭐ {mention} | "
+                f"{info['remaining']}روز"
+            )
 
             keyboard.add(
                 InlineKeyboardButton(
@@ -594,26 +592,31 @@ async def on_callback(callback: CallbackQuery):
 
         return
 
-    if (
-        data == "ad_umgmt"
-        or (
-            data.startswith("ad_umgmt_")
-            and data[9:].isdigit()
+    # ==========================
+    # User Management
+    # ==========================
+
+    if data == "ad_umgmt":
+        text, keyboard = users_manage_text(0)
+
+        await edit_message(
+            callback,
+            text,
+            keyboard,
         )
-    ):
-        page = (
-            int(
-                data.replace(
-                    "ad_umgmt_",
-                    "",
-                )
-            )
-            if (
-                data.startswith("ad_umgmt_")
-                and data[9:].isdigit()
-            )
-            else 0
-        )
+
+        return
+
+    if data.startswith("ad_umgmt_"):
+        page_text = data.split(
+            "ad_umgmt_",
+            1,
+        )[1]
+
+        if not page_text.isdigit():
+            return
+
+        page = int(page_text)
 
         text, keyboard = users_manage_text(page)
 
