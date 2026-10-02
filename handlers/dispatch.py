@@ -18,6 +18,7 @@ _MSG = None
 def _touch_user(user):
     if user is None:
         return
+
     try:
         add_user(
             user.id,
@@ -30,6 +31,7 @@ def _touch_user(user):
 
 def _load_cb():
     global _CB
+
     if _CB is None:
         from handlers import (
             admin_complete,
@@ -41,6 +43,7 @@ def _load_cb():
             comments,
             stats,
         )
+
         _CB = {
             "admin_complete": admin_complete,
             "admin_panel": admin_panel,
@@ -51,11 +54,13 @@ def _load_cb():
             "comments": comments,
             "stats": stats,
         }
+
     return _CB
 
 
 def _load_msg():
     global _MSG
+
     if _MSG is None:
         from handlers import (
             admin_complete,
@@ -73,6 +78,7 @@ def _load_msg():
             help,
             channel_settings,
         )
+
         _MSG = {
             "admin_complete": admin_complete,
             "admin_panel": admin_panel,
@@ -89,12 +95,14 @@ def _load_msg():
             "help": help,
             "channel_settings": channel_settings,
         }
+
     return _MSG
 
 
 async def _safe(handler, argument):
     if handler is None:
         return
+
     try:
         await handler(argument)
     except Exception as error:
@@ -120,10 +128,12 @@ def _callback_modules(data):
     elif data == "m_stats" or data.startswith("stats_"):
         names = ("stats",)
 
+    # پرداخت و لایسنس
     elif (
         data.startswith("plan_")
         or data.startswith("pay_")
         or data.startswith("adm_")
+        or data.startswith("gift_confirm_")
     ):
         names = ("shop",)
 
@@ -199,6 +209,7 @@ def _message_modules(user_id, text):
         "choose_pay",
         "card_info",
         "gift_code",
+        "gift_confirm",
         "wait_receipt",
         "admin_msg",
     ):
@@ -340,4 +351,4 @@ async def on_message(message: Message):
         await _safe(
             getattr(module, "on_message", None),
             message,
-    )
+        )
