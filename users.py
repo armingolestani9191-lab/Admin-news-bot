@@ -30,13 +30,6 @@ for _i in range(10):
 # ==========================
 
 def _blank_user(first_name="", username=None):
-    """
-    Create a completely new user structure.
-
-    The structure is intentionally kept compatible
-    with the previous JSON implementation.
-    """
-
     return {
         "first_name": first_name or "",
         "username": username,
@@ -56,11 +49,6 @@ def _blank_user(first_name="", username=None):
 
 
 def _sub_expire(user):
-    """
-    Get subscription expiration date for compatibility
-    with the previous user-merging logic.
-    """
-
     if not isinstance(user, dict):
         return ""
 
@@ -78,14 +66,6 @@ def _sub_expire(user):
 
 
 def _prefer_user(left, right):
-    """
-    Merge two user dictionaries while preserving
-    the most useful data.
-
-    Kept for compatibility and for possible future
-    migrations/imports.
-    """
-
     if not isinstance(left, dict):
         return right if isinstance(right, dict) else {}
 
@@ -95,7 +75,6 @@ def _prefer_user(left, right):
     chosen = dict(left)
 
     for key, value in right.items():
-
         if key in (
             "subscription",
             "channels",
@@ -138,19 +117,13 @@ def _prefer_user(left, right):
 
     left_channels = (
         left.get("channels")
-        if isinstance(
-            left.get("channels"),
-            list,
-        )
+        if isinstance(left.get("channels"), list)
         else []
     )
 
     right_channels = (
         right.get("channels")
-        if isinstance(
-            right.get("channels"),
-            list,
-        )
+        if isinstance(right.get("channels"), list)
         else []
     )
 
@@ -172,21 +145,10 @@ def _prefer_user(left, right):
 # ==========================
 
 def load_users(force=False):
-    """
-    Load all users from SQLite.
-
-    `force` is kept for compatibility with the
-    previous implementation.
-    """
-
     return _db_load_users()
 
 
 def save_users(users):
-    """
-    Save users to SQLite.
-    """
-
     return _db_save_users(users)
 
 
@@ -196,7 +158,21 @@ def ensure_user(
     username=None,
 ):
     """
-    Make sure a user exists.
+    Create or update user.
+
+    IMPORTANT:
+    Username is always synchronized with the
+    latest username received from Bale.
+
+    If the user changes:
+        @old_username -> @new_username
+
+    the old username is replaced immediately.
+
+    If the user removes their username:
+        @old_username -> None
+
+    the old username is also removed.
     """
 
     user_id = str(user_id)
@@ -204,7 +180,6 @@ def ensure_user(
     current = _db_get_user(user_id)
 
     if not isinstance(current, dict):
-
         current = _blank_user(
             first_name,
             username,
@@ -219,17 +194,21 @@ def ensure_user(
 
     changed = False
 
+    # Always update first name when Bale gives us a value.
     if (
-        first_name
+        first_name is not None
         and current.get("first_name") != first_name
     ):
-        current["first_name"] = first_name
+        current["first_name"] = first_name or ""
         changed = True
 
-    if (
-        username
-        and current.get("username") != username
-    ):
+    # IMPORTANT:
+    # Do NOT use "if username:" here.
+    #
+    # If the user changes username, save the new one.
+    # If the user removes username, save None and
+    # delete the old username from our stored data.
+    if current.get("username") != username:
         current["username"] = username
         changed = True
 
@@ -243,10 +222,6 @@ def ensure_user(
 
 
 def user_exists(user_id):
-    """
-    Check whether a user exists.
-    """
-
     return _db_get_user(str(user_id)) is not None
 
 
@@ -256,29 +231,13 @@ def add_user(
     username=None,
 ):
     """
-    Add a user if it does not already exist.
+    Add or synchronize a user.
+
+    This function is intentionally also used for
+    existing users so username changes are detected.
     """
 
-    current = _db_get_user(
-        str(user_id)
-    )
-
-    if isinstance(current, dict):
-
-        same_name = (
-            not first_name
-            or current.get("first_name") == first_name
-        )
-
-        same_user = (
-            not username
-            or current.get("username") == username
-        )
-
-        if same_name and same_user:
-            return
-
-    ensure_user(
+    return ensure_user(
         user_id,
         first_name,
         username,
@@ -289,25 +248,12 @@ def get_user(
     user_id,
     force=False,
 ):
-    """
-    Get one user.
-
-    `force` is kept for compatibility.
-    """
-
     return _db_get_user(
         str(user_id)
     )
 
 
 def search_users(query):
-    """
-    Search for a user by:
-    - ID
-    - username
-    - first name
-    """
-
     raw = str(
         query or ""
     ).strip().lstrip("@").translate(
@@ -327,10 +273,7 @@ def search_users(query):
 
     # Numeric user ID
     if raw.isdigit():
-
-        number = str(
-            int(raw)
-        )
+        number = str(int(raw))
 
         if number in users:
             return number
@@ -345,10 +288,7 @@ def search_users(query):
 
     for user_id, user in users.items():
 
-        if not isinstance(
-            user,
-            dict,
-        ):
+        if not isinstance(user, dict):
             continue
 
         username = str(
@@ -361,9 +301,7 @@ def search_users(query):
             or ""
         ).lower()
 
-        user_id_text = str(
-            user_id
-        )
+        user_id_text = str(user_id)
 
         if (
             username == needle
@@ -399,10 +337,6 @@ def update_user(
     user_id,
     data,
 ):
-    """
-    Update fields of a user.
-    """
-
     user_id = str(user_id)
 
     current = _db_get_user(
@@ -459,13 +393,6 @@ def _patch_channel(
     channel_id,
     updates,
 ):
-    """
-    Update one channel belonging to a user.
-
-    This function is intentionally kept public because
-    other modules in the project use it directly.
-    """
-
     if not isinstance(
         updates,
         dict,
@@ -522,10 +449,6 @@ def add_channel(
     channel,
     max_channels=3,
 ):
-    """
-    Add a channel to a user.
-    """
-
     from channel_utils import normalize_channel_id
 
     channel = (
@@ -578,7 +501,6 @@ def add_channel(
         ):
             return False
 
-    # Keep existing subscription behavior.
     from subscription import (
         is_free_user,
         FREE_ALLOWED_CATEGORIES,
@@ -623,10 +545,6 @@ def delete_channel(
     user_id,
     channel_id,
 ):
-    """
-    Delete a channel from a user.
-    """
-
     user_id = str(user_id)
 
     user = _db_get_user(
@@ -696,10 +614,6 @@ def _toggle_flag(
     key,
     default=True,
 ):
-    """
-    Toggle a boolean channel setting.
-    """
-
     user_id = str(user_id)
 
     user = _db_get_user(
@@ -881,4 +795,4 @@ def mark_quiet_wake(
             "price_at_طلا و ارز": 0,
             "price_at_ارز دیجیتال": 0,
         },
-    )
+)
