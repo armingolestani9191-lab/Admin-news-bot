@@ -5,15 +5,17 @@ from admin_store import load_join_channels
 
 
 # =========================================================
-# Force Join Cache
+# Cache
 # =========================================================
 
-_JOINED = {}
+_JOIN_CACHE = {}
 
-# وقتی کاربر واقعاً عضو تشخیص داده شد، مدت کوتاهی کش می‌شود.
-# وقتی عضو نباشد، کش خیلی کوتاه است تا بعد از Join سریع دوباره چک شود.
+# نتیجه مثبت مدت بیشتری کش می‌شود
 JOINED_CACHE_SECONDS = 30
-NOT_JOINED_CACHE_SECONDS = 3
+
+# نتیجه منفی خیلی کوتاه کش می‌شود
+# تا بعد از Join سریع دوباره بررسی شود
+NOT_JOINED_CACHE_SECONDS = 2
 
 
 # =========================================================
@@ -22,8 +24,10 @@ NOT_JOINED_CACHE_SECONDS = 3
 
 def get_force_join_channels():
     """
-    Return current force-join channels from SQLite.
+    دریافت لیست فعلی کانال‌های جوین اجباری
+    از SQLite
     """
+
     try:
         channels = load_join_channels()
     except Exception:
@@ -32,7 +36,7 @@ def get_force_join_channels():
     if not isinstance(channels, list):
         return []
 
-    clean = []
+    result = []
 
     for channel in channels:
         if not isinstance(channel, dict):
@@ -44,62 +48,91 @@ def get_force_join_channels():
         if not channel_id and not username:
             continue
 
-        clean.append({
+        result.append({
             "id": channel_id,
             "username": username,
         })
 
-    return clean
+    return result
 
 
 def is_force_join_enabled():
     """
-    Force join is enabled only when at least one
-    valid channel exists.
+    اگر حداقل یک کانال جوین اجباری وجود داشته باشد،
+    جوین اجباری فعال است.
     """
-    return bool(get_force_join_channels())
+
+    return bool(
+        get_force_join_channels()
+    )
 
 
 # =========================================================
-# Cache
+# Cache Management
 # =========================================================
 
 def clear_join_cache(user_id=None):
     """
-    Clear membership cache.
+    پاک کردن کش جوین.
 
-    If user_id is None, clear cache for everybody.
+    اگر user_id داده شود فقط کش همان کاربر پاک می‌شود.
     """
+
     if user_id is None:
-        _JOINED.clear()
+        _JOIN_CACHE.clear()
         return
 
-    _JOINED.pop(str(user_id), None)
+    try:
+        user_id = int(user_id)
+    except Exception:
+        return
+
+    _JOIN_CACHE.pop(
+        str(user_id),
+        None,
+    )
 
 
-def _get_cached(user_id):
+def _get_cache(user_id):
     """
-    Return cached membership result if it is still valid.
+    دریافت نتیجه کش‌شده.
     """
+
     key = str(user_id)
-    item = _JOINED.get(key)
+
+    item = _JOIN_CACHE.get(key)
 
     if not item:
         return None
 
-    expires_at, result = item
-
-    if expires_at <= time.time():
-        _JOINED.pop(key, None)
+    try:
+        expires_at = float(item["expires_at"])
+        result = bool(item["result"])
+    except Exception:
+        _JOIN_CACHE.pop(
+            key,
+            None,
+        )
         return None
 
-    return bool(result)
+    if expires_at <= time.time():
+        _JOIN_CACHE.pop(
+            key,
+            None,
+        )
+        return None
+
+    return result
 
 
 def _set_cache(user_id, result):
     """
-    Save membership result with different TTLs.
+    ذخیره نتیجه کلی.
+
+    نتیجه False فقط چند ثانیه نگه داشته می‌شود
+    تا کاربر بعد از Join سریع دوباره بررسی شود.
     """
+
     key = str(user_id)
 
     ttl = (
@@ -108,73 +141,117 @@ def _set_cache(user_id, result):
         else NOT_JOINED_CACHE_SECONDS
     )
 
-    _JOINED[key] = (
-        time.time() + ttl,
-        bool(result),
-    )
+    _JOIN_CACHE[key] = {
+        "result": bool(result),
+        "expires_at": time.time() + ttl,
+    }
 
 
 def _cleanup_cache():
     """
-    Remove expired cache entries.
+    پاک کردن کش‌های منقضی‌شده.
     """
-    now = time.time()
 
-    if len(_JOINED) <= 400:
+    if len(_JOIN_CACHE) < 300:
         return
 
-    for key, item in list(_JOINED.items()):
-        try:
-            expires_at = item[0]
-        except Exception:
-            _JOINED.pop(key, None)
-            continue
+    now = time.time()
 
-        if expires_at <= now:
-            _JOINED.pop(key, None)
+    for key, item in list(
+        _JOIN_CACHE.items()
+    ):
+        try:
+            if float(
+                item.get("expires_at", 0)
+            ) <= now:
+                _JOIN_CACHE.pop(
+                    key,
+                    None,
+                )
+        except Exception:
+            _JOIN_CACHE.pop(
+                key,
+                None,
+            )
 
 
 # =========================================================
-# Membership Check
+# Channel Helpers
 # =========================================================
 
 def _channel_target(channel):
     """
-    Return the best target for getChatMember.
-
-    Prefer the numeric channel ID when available.
-    Otherwise use username.
+    مشخص کردن شناسه‌ای که باید برای
+    getChatMember استفاده شود.
     """
+
     if not isinstance(channel, dict):
         return None
 
     channel_id = channel.get("id")
-    username = channel.get("username")
 
     if channel_id is not None:
-        text = str(channel_id).strip()
+        value = str(channel_id).strip()
 
-        if text:
+        if value:
             return channel_id
 
+    username = channel.get("username")
+
     if username:
-        text = str(username).strip()
+        value = str(username).strip()
 
-        if text:
-            if not text.startswith("@"):
-                text = "@" + text
+        if value:
+            if not value.startswith("@"):
+                value = "@" + value
 
-            return text
+            return value
 
     return None
 
 
-def _is_member_status(status):
+def _channel_name(channel):
     """
-    Bale membership statuses which mean the user
-    currently belongs to the channel.
+    نام قابل نمایش کانال.
     """
-    if not status:
+
+    if not isinstance(channel, dict):
+        return "کانال"
+
+    username = str(
+        channel.get("username") or ""
+    ).strip()
+
+    if username:
+        if not username.startswith("@"):
+            username = "@" + username
+
+        return username
+
+    channel_id = channel.get("id")
+
+    if channel_id:
+        return str(channel_id)
+
+    return "کانال"
+
+
+def _is_joined_status(status):
+    """
+    وضعیت‌هایی که یعنی کاربر عضو کانال است.
+
+    creator / administrator:
+        مدیر یا مالک کانال
+
+    member:
+        عضو عادی
+
+    restricted:
+        در Bale اگر کاربر هنوز در کانال باشد
+        و فقط محدود شده باشد، عضو محسوب می‌شود.
+    """
+
+    if status is None:
         return False
 
     status = str(status).strip().lower()
@@ -187,48 +264,65 @@ def _is_member_status(status):
     }
 
 
-def is_user_joined(user_id, force=False):
+# =========================================================
+# Detailed Check
+# =========================================================
+
+def get_missing_channel(user_id, force=False):
     """
-    Check whether the user has joined ALL force-join channels.
+    بررسی تک‌تک کانال‌های جوین اجباری.
 
-    force=True:
-        Always performs a fresh API check.
+    خروجی:
+        None
+            یعنی کاربر در همه کانال‌ها عضو است.
 
-    force=False:
-        Uses a very short cache.
+        channel dict
+            یعنی کاربر حداقل در یک کانال عضو نیست.
+
+    نکته مهم:
+    کانال‌ها یکی‌یکی بررسی می‌شوند.
+    پس اگر در کانال اول عضو باشد ولی در کانال دوم
+    نباشد، کانال دوم برگردانده می‌شود.
     """
 
     try:
         user_id = int(user_id)
     except Exception:
-        return False
+        return {
+            "username": "کانال نامشخص",
+            "id": None,
+        }
 
     channels = get_force_join_channels()
 
-    # No force-join channels = no restriction.
+    # هیچ کانالی برای جوین اجباری ثبت نشده
     if not channels:
-        return True
-
-    # /start and "عضو شدم" can request a fresh check.
-    if not force:
-        cached = _get_cached(user_id)
-
-        if cached is not None:
-            return cached
+        return None
 
     # -----------------------------------------------------
-    # Check every required channel
+    # کش فقط وقتی استفاده می‌شود که force=False باشد.
+    #
+    # اما برای تشخیص اینکه دقیقاً کدام کانال باقی مانده،
+    # بررسی تازه دقیق‌تر است.
+    # -----------------------------------------------------
+
+    if not force:
+        cached = _get_cache(user_id)
+
+        if cached is True:
+            return None
+
+    # -----------------------------------------------------
+    # هر کانال جداگانه بررسی می‌شود
     # -----------------------------------------------------
 
     for channel in channels:
+
         target = _channel_target(channel)
 
-        # A broken channel entry must NEVER disable
-        # force join.
+        # رکورد خراب نباید باعث دور زدن جوین اجباری شود.
         if not target:
-            _set_cache(user_id, False)
-            _cleanup_cache()
-            return False
+            return channel
 
         try:
             status = get_chat_member(
@@ -238,34 +332,122 @@ def is_user_joined(user_id, force=False):
         except Exception:
             status = None
 
-        # API failure / unknown status:
-        # fail closed so the user cannot bypass force join.
-        if not _is_member_status(status):
-            _set_cache(user_id, False)
-            _cleanup_cache()
-            return False
+        # -------------------------------------------------
+        # اگر API وضعیت را برنگرداند،
+        # کاربر را عضو فرض نمی‌کنیم.
+        # -------------------------------------------------
 
-    # User is a member of every required channel.
-    _set_cache(user_id, True)
-    _cleanup_cache()
+        if not _is_joined_status(status):
+            return channel
 
-    return True
+    # -----------------------------------------------------
+    # رسیدن به اینجا یعنی در همه کانال‌ها عضو است.
+    # -----------------------------------------------------
+
+    return None
 
 
 # =========================================================
-# Force Recheck
+# Main Check
+# =========================================================
+
+def is_user_joined(user_id, force=False):
+    """
+    بررسی اینکه کاربر در ALL کانال‌های اجباری عضو است.
+
+    اگر حتی یک کانال را Join نکرده باشد:
+        False
+
+    اگر همه را Join کرده باشد:
+        True
+    """
+
+    try:
+        user_id = int(user_id)
+    except Exception:
+        return False
+
+    channels = get_force_join_channels()
+
+    # هیچ کانال اجباری وجود ندارد
+    if not channels:
+        return True
+
+    # -----------------------------------------------------
+    # اگر force=True باشد، کش کاملاً نادیده گرفته می‌شود.
+    # -----------------------------------------------------
+
+    if not force:
+        cached = _get_cache(user_id)
+
+        if cached is not None:
+            return cached
+
+    missing = get_missing_channel(
+        user_id,
+        force=True,
+    )
+
+    if missing is None:
+        _set_cache(
+            user_id,
+            True,
+        )
+        _cleanup_cache()
+        return True
+
+    # حداقل یک کانال هنوز Join نشده
+    _set_cache(
+        user_id,
+        False,
+    )
+
+    _cleanup_cache()
+
+    return False
+
+
+# =========================================================
+# Fresh Check
 # =========================================================
 
 def force_check_user(user_id):
     """
-    Always perform a fresh force-join check.
+    بررسی کاملاً تازه.
 
-    This is intended for:
+    برای:
     - /start
-    - "✅ عضو شدم"
+    - دکمه «عضو شدم»
+
+    استفاده می‌شود.
     """
-    clear_join_cache(user_id)
+
+    clear_join_cache(
+        user_id
+    )
+
     return is_user_joined(
+        user_id,
+        force=True,
+    )
+
+
+# =========================================================
+# Missing Channel
+# =========================================================
+
+def get_user_missing_channel(user_id):
+    """
+    برگرداندن کانالی که کاربر هنوز در آن عضو نشده.
+
+    این تابع همیشه بررسی تازه انجام می‌دهد.
+    """
+
+    clear_join_cache(
+        user_id
+    )
+
+    return get_missing_channel(
         user_id,
         force=True,
     )
