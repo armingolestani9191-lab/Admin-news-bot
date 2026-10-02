@@ -158,6 +158,11 @@ def _user_rows():
             continue
 
         info = subscription_info(user_id)
+
+        # فقط کاربران دارای اشتراک فعال در دکمه‌ها نمایش داده شوند
+        if not info["active"]:
+            continue
+
         username = user.get("username")
 
         mention = (
