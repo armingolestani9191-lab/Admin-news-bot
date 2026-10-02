@@ -3,7 +3,8 @@
 # SQLite Storage Edition
 # ==========================
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+import os
 import secrets
 import string
 
@@ -11,6 +12,16 @@ from storage import (
     get_value,
     set_value,
 )
+
+try:
+    from zoneinfo import ZoneInfo
+
+    try:
+        TEHRAN = ZoneInfo("Asia/Tehran")
+    except Exception:
+        TEHRAN = None
+except Exception:
+    TEHRAN = None
 
 
 # ==========================
@@ -52,20 +63,169 @@ DEFAULT_PLANS = {
 
 
 # ==========================
-# Settings Keys
+# Subscription Limits
+# ==========================
+
+FREE_DAYS = 3
+
+FREE_MAX_CHANNELS = 1
+
+PAID_MAX_CHANNELS = 3
+
+FREE_ALLOWED_CATEGORIES = [
+    "ایران",
+    "جهان",
+]
+
+# Compatibility with older code
+FREE_LOCKED_TIMES = {1, 5}
+
+
+# ==========================
+# Storage
 # ==========================
 
 SETTINGS_NAMESPACE = "subscription"
 
 CARD_KEY = "subscription_card_number"
+OLD_CARD_KEY = "card"
+
 SUPPORT_KEY = "support_username"
 
+PAYMENTS_KEY = "payments"
+
+LICENSES_KEY = "subscription_licenses"
+OLD_LICENSES_KEY = "licenses"
+
 
 # ==========================
-# Internal Helpers
+# Default Card
 # ==========================
 
-def _setting(key, default=None):
+_DEFAULT_CARD = os.getenv(
+    "CARD_NUMBER",
+    "",
+)
+
+
+# ==========================
+# Default Support
+# ==========================
+
+DEFAULT_SUPPORT_USERNAME = "@pv_ahzar04"
+
+
+# ==========================
+# Date Helpers
+# ==========================
+
+def today_tehran():
+    """
+    Return today's date in Tehran timezone.
+    """
+
+    if TEHRAN is not None:
+        try:
+            return datetime.now(TEHRAN).date()
+        except Exception:
+            pass
+
+    return date.today()
+
+
+def _now_datetime():
+    """
+    Return current datetime.
+
+    Uses Tehran timezone when available.
+    """
+
+    if TEHRAN is not None:
+        try:
+            return datetime.now(TEHRAN).replace(
+                tzinfo=None
+            )
+        except Exception:
+            pass
+
+    return datetime.utcnow()
+
+
+def _parse_date(value):
+    """
+    Parse both old and new subscription date formats.
+    """
+
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        return value
+
+    if isinstance(value, date):
+        return datetime(
+            value.year,
+            value.month,
+            value.day,
+        )
+
+    value = str(value).strip()
+
+    if not value:
+        return None
+
+    formats = (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+    )
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(
+                value,
+                fmt,
+            )
+        except Exception:
+            pass
+
+    # ISO fallback
+    try:
+        return datetime.fromisoformat(
+            value.replace("Z", "")
+        )
+    except Exception:
+        return None
+
+
+def parse_expire(value):
+    """
+    Compatibility helper.
+
+    Returns date object.
+    """
+
+    parsed = _parse_date(value)
+
+    if parsed is None:
+        return None
+
+    return parsed.date()
+
+
+# ==========================
+# Generic Settings
+# ==========================
+
+def _setting(
+    key,
+    default=None,
+):
+    """
+    Read a value from SQLite.
+    """
+
     try:
         value = get_value(
             SETTINGS_NAMESPACE,
@@ -82,24 +242,41 @@ def _setting(key, default=None):
         return default
 
 
-def _save_setting(key, value):
+def _save_setting(
+    key,
+    value,
+):
+    """
+    Save a value into SQLite.
+    """
+
     try:
-        return set_value(
-            SETTINGS_NAMESPACE,
-            key,
-            value,
+        return bool(
+            set_value(
+                SETTINGS_NAMESPACE,
+                key,
+                value,
+            )
         )
     except Exception:
         return False
 
 
+# ==========================
+# Plans
+# ==========================
+
 def _plan_key(plan_id):
-    return f"subscription_plan_{str(plan_id)}"
+    return (
+        f"subscription_plan_{str(plan_id)}"
+    )
 
 
 def _load_plan(plan_id):
+    plan_id = str(plan_id)
+
     default = DEFAULT_PLANS.get(
-        str(plan_id)
+        plan_id
     )
 
     if not default:
@@ -110,32 +287,32 @@ def _load_plan(plan_id):
         None,
     )
 
-    if not isinstance(saved, dict):
+    if not isinstance(
+        saved,
+        dict,
+    ):
         return dict(default)
 
     plan = dict(default)
 
-    for key in (
-        "title",
-        "days",
-        "price",
-    ):
-        if key in saved:
-            plan[key] = saved[key]
+    if "title" in saved:
+        plan["title"] = saved["title"]
 
-    try:
-        plan["days"] = int(
-            plan["days"]
-        )
-    except Exception:
-        plan["days"] = default["days"]
+    if "days" in saved:
+        try:
+            plan["days"] = int(
+                saved["days"]
+            )
+        except Exception:
+            plan["days"] = default["days"]
 
-    try:
-        plan["price"] = int(
-            plan["price"]
-        )
-    except Exception:
-        plan["price"] = default["price"]
+    if "price" in saved:
+        try:
+            plan["price"] = int(
+                saved["price"]
+            )
+        except Exception:
+            plan["price"] = default["price"]
 
     return plan
 
@@ -144,7 +321,9 @@ def _load_plans():
     plans = {}
 
     for plan_id in DEFAULT_PLANS:
-        plan = _load_plan(plan_id)
+        plan = _load_plan(
+            plan_id
+        )
 
         if plan:
             plans[plan_id] = plan
@@ -152,23 +331,22 @@ def _load_plans():
     return plans
 
 
-# ==========================
-# Public Plans
-# ==========================
-
 class _Plans(dict):
     """
-    Dynamic dictionary.
+    Dynamic PLANS dictionary.
 
-    Keeps compatibility with existing code:
+    Existing code can still use:
 
         PLANS.get("30")
-
-    while loading the latest prices
-    from SQLite.
+        PLANS["30"]
+        PLANS.items()
     """
 
-    def get(self, key, default=None):
+    def get(
+        self,
+        key,
+        default=None,
+    ):
         plans = _load_plans()
 
         return plans.get(
@@ -176,12 +354,18 @@ class _Plans(dict):
             default,
         )
 
-    def __getitem__(self, key):
+    def __getitem__(
+        self,
+        key,
+    ):
         plans = _load_plans()
 
         return plans[str(key)]
 
-    def __contains__(self, key):
+    def __contains__(
+        self,
+        key,
+    ):
         plans = _load_plans()
 
         return str(key) in plans
@@ -209,13 +393,9 @@ class _Plans(dict):
 PLANS = _Plans()
 
 
-# ==========================
-# Plan Management
-# ==========================
-
 def get_plan(plan_id):
     """
-    Get the latest version of a subscription plan.
+    Get one subscription plan.
     """
 
     return _load_plan(
@@ -225,7 +405,7 @@ def get_plan(plan_id):
 
 def get_all_plans():
     """
-    Return all subscription plans.
+    Get all subscription plans.
     """
 
     return _load_plans()
@@ -236,12 +416,13 @@ def set_plan_price(
     price,
 ):
     """
-    Change the price of a subscription plan.
-
-    The new price is stored in SQLite.
+    Change subscription plan price
+    and save it permanently in SQLite.
     """
 
-    plan_id = str(plan_id)
+    plan_id = str(
+        plan_id
+    )
 
     if plan_id not in DEFAULT_PLANS:
         return False
@@ -269,23 +450,25 @@ def set_plan_price(
     )
 
 
-def reset_plan_price(plan_id):
+def reset_plan_price(
+    plan_id,
+):
     """
-    Reset a plan price to its default value.
+    Reset plan price to default.
     """
 
-    plan_id = str(plan_id)
+    plan_id = str(
+        plan_id
+    )
 
     if plan_id not in DEFAULT_PLANS:
         return False
 
-    plan = dict(
-        DEFAULT_PLANS[plan_id]
-    )
-
     return _save_setting(
         _plan_key(plan_id),
-        plan,
+        dict(
+            DEFAULT_PLANS[plan_id]
+        ),
     )
 
 
@@ -293,12 +476,9 @@ def reset_plan_price(plan_id):
 # Support Username
 # ==========================
 
-DEFAULT_SUPPORT_USERNAME = "@pv_ahzar04"
-
-
 def get_support_username():
     """
-    Get the current support username.
+    Get current support username.
     """
 
     value = _setting(
@@ -319,9 +499,11 @@ def get_support_username():
     return value
 
 
-def set_support_username(username):
+def set_support_username(
+    username,
+):
     """
-    Change support username and save it in SQLite.
+    Save support username in SQLite.
     """
 
     username = str(
@@ -351,20 +533,72 @@ def set_support_username(username):
 def get_card_number():
     """
     Get saved card number.
+
+    Supports both the new SQLite key
+    and the old storage key.
     """
 
-    return str(
-        _setting(
-            CARD_KEY,
-            "",
-        )
-        or ""
+    value = _setting(
+        CARD_KEY,
+        None,
     )
 
+    if value:
+        if isinstance(value, dict):
+            number = str(
+                value.get("number")
+                or ""
+            ).strip()
 
-def set_card_number(number):
+            if number:
+                return number
+
+        elif isinstance(value, str):
+            number = value.strip()
+
+            if number:
+                return number
+
+    old_value = _setting(
+        OLD_CARD_KEY,
+        None,
+    )
+
+    if isinstance(
+        old_value,
+        dict,
+    ):
+        number = str(
+            old_value.get("number")
+            or ""
+        ).strip()
+
+        if number:
+            return number
+
+    elif isinstance(
+        old_value,
+        str,
+    ):
+        number = old_value.strip()
+
+        if number:
+            return number
+
+    return str(
+        _DEFAULT_CARD
+        or ""
+    ).strip()
+
+
+def set_card_number(
+    number,
+):
     """
-    Save a new card number.
+    Save card number in SQLite.
+
+    Accepts 16 digit cards and also
+    keeps compatibility with 12-19 digits.
     """
 
     number = str(
@@ -380,47 +614,82 @@ def set_card_number(number):
     if not digits.isdigit():
         return None
 
-    if len(digits) != 16:
+    if len(digits) < 12:
         return None
 
-    _save_setting(
+    if len(digits) > 19:
+        return None
+
+    if len(digits) == 16:
+        formatted = (
+            f"{digits[0:4]}-"
+            f"{digits[4:8]}-"
+            f"{digits[8:12]}-"
+            f"{digits[12:16]}"
+        )
+    else:
+        formatted = digits
+
+    if not _save_setting(
         CARD_KEY,
-        digits,
-    )
-
-    return digits
-
-
-# ==========================
-# Subscription Helpers
-# ==========================
-
-def _parse_date(value):
-    if not value:
+        formatted,
+    ):
         return None
 
-    value = str(value)
+    return formatted
 
-    formats = (
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d",
+
+# ==========================
+# Payments
+# ==========================
+
+def load_payments():
+    """
+    Load payment requests from SQLite.
+    """
+
+    data = _setting(
+        PAYMENTS_KEY,
+        {},
     )
 
-    for fmt in formats:
-        try:
-            return datetime.strptime(
-                value,
-                fmt,
-            )
-        except Exception:
-            pass
+    if not isinstance(
+        data,
+        dict,
+    ):
+        return {}
 
-    return None
+    return data
 
 
-def subscription_info(user_id):
+def save_payments(
+    data,
+):
     """
-    Return subscription information for a user.
+    Save payment requests to SQLite.
+    """
+
+    if not isinstance(
+        data,
+        dict,
+    ):
+        return False
+
+    return _save_setting(
+        PAYMENTS_KEY,
+        data,
+    )
+
+
+# ==========================
+# Subscription Info
+# ==========================
+
+def subscription_info(
+    user_id,
+):
+    """
+    Return current subscription information.
     """
 
     from users import get_user
@@ -469,70 +738,77 @@ def subscription_info(user_id):
         expire
     )
 
+    total_days = 0
+
+    try:
+        total_days = int(
+            subscription.get(
+                "total_days",
+                0,
+            )
+            or 0
+        )
+    except Exception:
+        total_days = 0
+
     if not expire_date:
         return {
             "active": False,
             "remaining": 0,
-            "total": int(
-                subscription.get(
-                    "total_days",
-                    0,
-                )
-                or 0
-            ),
+            "total": total_days,
             "label": "بدون اشتراک",
-            "type": subscription.get("type"),
+            "type": subscription.get(
+                "type"
+            ),
             "expire": expire,
         }
 
-    now = datetime.utcnow()
+    now = _now_datetime()
 
     remaining_seconds = (
         expire_date - now
     ).total_seconds()
 
     if remaining_seconds <= 0:
+
         return {
             "active": False,
             "remaining": 0,
-            "total": int(
-                subscription.get(
-                    "total_days",
-                    0,
-                )
-                or 0
-            ),
+            "total": total_days,
             "label": "منقضی شده",
-            "type": subscription.get("type"),
+            "type": subscription.get(
+                "type"
+            ),
             "expire": expire,
         }
 
     remaining = max(
         1,
         int(
-            remaining_seconds
-            / 86400
+            remaining_seconds / 86400
         ),
     )
 
-    total = int(
-        subscription.get(
-            "total_days",
-            remaining,
-        )
+    total = (
+        total_days
         or remaining
     )
 
-    sub_type = subscription.get(
-        "type"
-    )
+    sub_type = str(
+        subscription.get(
+            "type"
+        )
+        or ""
+    ).strip().lower()
 
     if sub_type == "free":
         label = "رایگان"
+
     elif sub_type == "paid":
         label = "پولی"
+
     else:
-        label = str(
+        label = (
             sub_type
             or "اشتراک"
         )
@@ -547,16 +823,85 @@ def subscription_info(user_id):
     }
 
 
+# ==========================
+# Subscription Status
+# ==========================
+
+def has_subscription(
+    user_id,
+):
+    """
+    Compatibility function used by:
+        news_targets.py
+        handlers/home.py
+    """
+
+    return bool(
+        subscription_info(
+            user_id
+        )["active"]
+    )
+
+
+def is_free_user(
+    user_id,
+):
+    info = subscription_info(
+        user_id
+    )
+
+    return bool(
+        info["active"]
+        and info["type"] == "free"
+    )
+
+
+def max_channels_for(
+    user_id,
+):
+    """
+    Free users:
+        1 channel
+
+    Paid users:
+        3 channels
+    """
+
+    if not has_subscription(
+        user_id
+    ):
+        return 0
+
+    if is_free_user(
+        user_id
+    ):
+        return FREE_MAX_CHANNELS
+
+    return PAID_MAX_CHANNELS
+
+
+# ==========================
+# Activate Subscription
+# ==========================
+
 def activate_subscription(
     user_id,
     subscription_type,
     days,
+    extra=None,
 ):
     """
     Activate or extend a subscription.
+
+    If user already has an active subscription,
+    new days are added to the remaining days.
     """
 
-    from users import get_user, update_user
+    from users import (
+        ensure_user,
+        get_user,
+        update_user,
+    )
 
     user_id = str(
         user_id
@@ -569,6 +914,11 @@ def activate_subscription(
 
     if days <= 0:
         return False
+
+    # Make sure user exists.
+    ensure_user(
+        user_id
+    )
 
     user = get_user(
         user_id
@@ -584,48 +934,79 @@ def activate_subscription(
         user_id
     )
 
-    now = datetime.utcnow()
+    now = _now_datetime()
 
-    if current["active"] and current.get("expire"):
+    if (
+        current["active"]
+        and current.get("expire")
+    ):
         current_expire = _parse_date(
             current["expire"]
         )
 
-        if current_expire and current_expire > now:
+        if (
+            current_expire
+            and current_expire > now
+        ):
             start = current_expire
         else:
             start = now
+
     else:
         start = now
 
-    expire = start + timedelta(
-        days=days
+    expire = (
+        start
+        + timedelta(days=days)
     )
 
+    # Preserve accumulated remaining days.
     total_days = days
 
     if current["active"]:
-        total_days += int(
-            current.get(
-                "remaining",
-                0,
+        try:
+            total_days += int(
+                current.get(
+                    "remaining",
+                    0,
+                )
+                or 0
             )
-            or 0
-        )
+        except Exception:
+            pass
 
-    user["subscription"] = {
-        "type": subscription_type,
+    subscription = {
+        "type": str(
+            subscription_type
+        ),
         "expire": expire.strftime(
             "%Y-%m-%d %H:%M:%S"
         ),
         "total_days": total_days,
     }
 
-    return update_user(
-        user_id,
-        user,
+    user["subscription"] = (
+        subscription
     )
 
+    if isinstance(
+        extra,
+        dict,
+    ):
+        for key, value in extra.items():
+            user[key] = value
+
+    return bool(
+        update_user(
+            user_id,
+            user,
+        )
+    )
+
+
+# ==========================
+# Clear Subscription
+# ==========================
 
 def clear_subscription(
     user_id,
@@ -634,17 +1015,30 @@ def clear_subscription(
     Remove user's subscription.
     """
 
-    from users import update_user
+    from users import (
+        ensure_user,
+        update_user,
+    )
 
-    return update_user(
-        str(user_id),
-        {
-            "subscription": {
-                "type": None,
-                "expire": None,
-                "total_days": 0,
-            }
-        },
+    user_id = str(
+        user_id
+    )
+
+    ensure_user(
+        user_id
+    )
+
+    return bool(
+        update_user(
+            user_id,
+            {
+                "subscription": {
+                    "type": None,
+                    "expire": None,
+                    "total_days": 0,
+                }
+            },
+        )
     )
 
 
@@ -652,83 +1046,128 @@ def clear_subscription(
 # Free Subscription
 # ==========================
 
-FREE_DAYS = 3
-
-FREE_ALLOWED_CATEGORIES = [
-    "ایران",
-    "جهان",
-]
-
-
-def is_free_user(user_id):
-    info = subscription_info(
-        user_id
-    )
-
-    return (
-        info["active"]
-        and info["type"] == "free"
-    )
-
-
 def claim_free_subscription(
     user_id,
+    first_name="",
+    username=None,
 ):
-    from users import get_user, update_user
+    """
+    Claim the 3-day free subscription.
+
+    Supports both:
+        claim_free_subscription(user_id)
+
+    and:
+        claim_free_subscription(
+            user_id,
+            first_name,
+            username,
+        )
+    """
+
+    from users import (
+        ensure_user,
+        get_user,
+    )
 
     user_id = str(
         user_id
     )
 
-    user = get_user(
+    ensure_user(
+        user_id,
+        first_name,
+        username,
+    )
+
+    info = subscription_info(
         user_id
     )
 
-    if not isinstance(
-        user,
-        dict,
-    ):
-        return False
+    user = get_user(
+        user_id
+    ) or {}
+
+    if info["active"]:
+        return False, "already"
 
     if user.get(
         "free_claimed"
     ):
-        return False
+        return False, "claimed"
 
     ok = activate_subscription(
         user_id,
         "free",
         FREE_DAYS,
+        {
+            "free_claimed": True,
+        },
     )
 
     if not ok:
-        return False
+        return False, "save"
 
-    user = get_user(
-        user_id
+    return True, FREE_DAYS
+
+
+# ==========================
+# License Storage
+# ==========================
+
+def _licenses():
+    """
+    Load licenses.
+
+    Reads the new key first and falls back
+    to the old key for compatibility.
+    """
+
+    data = _setting(
+        LICENSES_KEY,
+        None,
     )
 
-    if not isinstance(
-        user,
+    if isinstance(
+        data,
         dict,
     ):
-        return False
+        return data
 
-    user["free_claimed"] = True
-
-    update_user(
-        user_id,
-        user,
+    old_data = _setting(
+        OLD_LICENSES_KEY,
+        {},
     )
 
-    return True
+    if isinstance(
+        old_data,
+        dict,
+    ):
+        return old_data
+
+    return {}
+
+
+def _save_licenses(
+    data,
+):
+    """
+    Save licenses.
+    """
+
+    return _save_setting(
+        LICENSES_KEY,
+        data,
+    )
 
 
 # ==========================
-# License System
+# License Generator
 # ==========================
 
-def _random_license(length=12):
+def _random_license(
+    length=12,
+):
     alphabet = (
         string.ascii_uppercase
         + string.digits
@@ -742,31 +1181,11 @@ def _random_license(length=12):
     )
 
 
-def _licenses():
-    value = _setting(
-        "subscription_licenses",
-        {},
-    )
-
-    if not isinstance(
-        value,
-        dict,
-    ):
-        return {}
-
-    return value
-
-
-def _save_licenses(data):
-    return _save_setting(
-        "subscription_licenses",
-        data,
-    )
-
-
-def create_license(days):
+def create_license(
+    days,
+):
     """
-    Create a new license code.
+    Create a new license.
     """
 
     try:
@@ -788,17 +1207,23 @@ def create_license(days):
         "days": days,
         "used": False,
         "user_id": None,
-        "created_at": datetime.utcnow().strftime(
+        "used_by": None,
+        "created_at": _now_datetime().strftime(
             "%Y-%m-%d %H:%M:%S"
         ),
     }
 
-    _save_licenses(
+    if not _save_licenses(
         licenses
-    )
+    ):
+        return None
 
     return code
 
+
+# ==========================
+# Redeem License
+# ==========================
 
 def redeem_license(
     user_id,
@@ -813,7 +1238,10 @@ def redeem_license(
     ).strip().upper()
 
     if not code:
-        return False, "کد لایسنس را وارد کن."
+        return (
+            False,
+            "کد لایسنس را وارد کن.",
+        )
 
     licenses = _licenses()
 
@@ -825,41 +1253,67 @@ def redeem_license(
         item,
         dict,
     ):
-        return False, "کد لایسنس معتبر نیست."
-
-    if item.get("used"):
-        return False, "این کد قبلاً استفاده شده است."
-
-    days = int(
-        item.get(
-            "days",
-            0,
+        return (
+            False,
+            "کد لایسنس معتبر نیست.",
         )
-        or 0
-    )
+
+    if item.get(
+        "used"
+    ):
+        return (
+            False,
+            "این کد قبلاً استفاده شده است.",
+        )
+
+    try:
+        days = int(
+            item.get(
+                "days",
+                0,
+            )
+            or 0
+        )
+    except Exception:
+        days = 0
 
     if days <= 0:
-        return False, "این کد اشتباه است."
+        return (
+            False,
+            "این کد اشتباه است.",
+        )
 
-    if not activate_subscription(
+    ok = activate_subscription(
         user_id,
         "paid",
         days,
-    ):
-        return False, "فعال‌سازی اشتراک انجام نشد."
+    )
+
+    if not ok:
+        return (
+            False,
+            "فعال‌سازی اشتراک انجام نشد.",
+        )
 
     item["used"] = True
     item["user_id"] = str(
         user_id
     )
-    item["used_at"] = datetime.utcnow().strftime(
+    item["used_by"] = str(
+        user_id
+    )
+    item["used_at"] = _now_datetime().strftime(
         "%Y-%m-%d %H:%M:%S"
     )
 
     licenses[code] = item
 
-    _save_licenses(
+    if not _save_licenses(
         licenses
-    )
+    ):
+        return (
+            False,
+            "ذخیره مصرف لایسنس انجام نشد.",
+        )
 
     return True, days
