@@ -640,6 +640,97 @@ async def on_callback(callback: CallbackQuery):
         return
 
     # ======================================================
+    # Channel Management
+    # ======================================================
+
+    if data == "ad_chs" or data.startswith("ad_chs_"):
+        page = 0
+
+        if data.startswith("ad_chs_"):
+            page_text = data.split(
+                "ad_chs_",
+                1,
+            )[1]
+
+            if not page_text.isdigit():
+                return
+
+            page = int(page_text)
+
+        text, keyboard = admin_panel.channels_menu(page)
+
+        await edit_message(
+            callback,
+            text,
+            keyboard,
+        )
+
+        return
+
+    if data.startswith("ad_ch_"):
+        index_text = data.split(
+            "ad_ch_",
+            1,
+        )[1]
+
+        if not index_text.isdigit():
+            return
+
+        text, keyboard = admin_panel.channel_detail(
+            int(index_text)
+        )
+
+        await edit_message(
+            callback,
+            text,
+            keyboard,
+        )
+
+        return
+
+    if data.startswith("ad_pause_") or data.startswith("ad_run_"):
+        pause = data.startswith("ad_pause_")
+        index_text = data.split("_")[-1]
+
+        if not index_text.isdigit():
+            return
+
+        index = int(index_text)
+        items = admin_panel.all_registered_channels()
+
+        if index < 0 or index >= len(items):
+            await edit_message(
+                callback,
+                "کانال پیدا نشد.",
+                back_admin(),
+            )
+            return
+
+        item = items[index]
+
+        set_channel_status(
+            item["owner_id"],
+            item["id"],
+            "paused" if pause else "active",
+        )
+
+        text, keyboard = admin_panel.channel_detail(index)
+
+        prefix = (
+            "⏸️ متوقف شد"
+            if pause
+            else "▶️ ران شد"
+        )
+
+        await edit_message(
+            callback,
+            prefix + "\n\n" + text,
+            keyboard,
+        )
+
+        return
+
+    # ======================================================
     # User Management Pagination
     # ======================================================
 
