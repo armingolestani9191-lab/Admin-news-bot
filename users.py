@@ -169,7 +169,7 @@ def ensure_user(
 
     the old username is replaced immediately.
 
-    If the user removes their username:
+    If the user removes username:
         @old_username -> None
 
     the old username is also removed.
@@ -194,7 +194,6 @@ def ensure_user(
 
     changed = False
 
-    # Always update first name when Bale gives us a value.
     if (
         first_name is not None
         and current.get("first_name") != first_name
@@ -202,12 +201,6 @@ def ensure_user(
         current["first_name"] = first_name or ""
         changed = True
 
-    # IMPORTANT:
-    # Do NOT use "if username:" here.
-    #
-    # If the user changes username, save the new one.
-    # If the user removes username, save None and
-    # delete the old username from our stored data.
     if current.get("username") != username:
         current["username"] = username
         changed = True
@@ -501,19 +494,24 @@ def add_channel(
         ):
             return False
 
-    from subscription import (
-        is_free_user,
-        FREE_ALLOWED_CATEGORIES,
-    )
-
-    if is_free_user(user_id):
-        default_categories = list(
-            FREE_ALLOWED_CATEGORIES
-        )
+    # ==========================
+    # Category defaults
+    # ==========================
+    #
+    # اشتراک رایگان:
+    # از همان ابتدا «همه» باشد.
+    #
+    # اشتراک پولی:
+    # رفتار قبلی حفظ می‌شود و آن هم
+    # به صورت پیش‌فرض «همه» است.
+    #
+    # بنابراین هر دو نوع اشتراک،
+    # کانال جدید را با «همه دسته‌ها»
+    # شروع می‌کنند.
+    if _is_free_subscription(user_id):
+        default_categories = ["همه"]
     else:
-        default_categories = [
-            "همه"
-        ]
+        default_categories = ["همه"]
 
     channels.append(
         {
@@ -539,6 +537,12 @@ def add_channel(
     )
 
     return True
+
+
+def _is_free_subscription(user_id):
+    from subscription import is_free_user
+
+    return is_free_user(user_id)
 
 
 def delete_channel(
@@ -795,4 +799,4 @@ def mark_quiet_wake(
             "price_at_طلا و ارز": 0,
             "price_at_ارز دیجیتال": 0,
         },
-)
+        )
