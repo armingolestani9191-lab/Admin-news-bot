@@ -73,11 +73,28 @@ def users_stats_text():
 
 def channels_stats_page(page=0):
     items = all_registered_channels()
-    active = sum(1 for item in items if item.get("status") == "active")
+    active = sum(
+        1
+        for item in items
+        if item.get("status") == "active"
+    )
 
     per_page = 30
-    total_pages = max(1, (len(items) + per_page - 1) // per_page)
-    page = max(0, min(int(page or 0), total_pages - 1))
+
+    total_pages = max(
+        1,
+        (len(items) + per_page - 1) // per_page,
+    )
+
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 0
+
+    page = max(
+        0,
+        min(page, total_pages - 1),
+    )
 
     start = page * per_page
 
@@ -91,23 +108,38 @@ def channels_stats_page(page=0):
         "",
     ]
 
-    chunk = items[start:start + per_page]
+    chunk = items[
+        start:start + per_page
+    ]
 
     if not chunk:
-        lines.append("هنوز کانالی ثبت نشده.")
+        lines.append(
+            "هنوز کانالی ثبت نشده."
+        )
     else:
-        for index, item in enumerate(chunk, start=start + 1):
+        for index, item in enumerate(
+            chunk,
+            start=start + 1,
+        ):
             owner = (
                 item.get("owner_username")
                 or item.get("owner_id")
                 or item.get("owner_name")
             )
 
-            if owner and not str(owner).startswith("@") and not str(owner).isdigit():
+            if (
+                owner
+                and not str(owner).startswith("@")
+                and not str(owner).isdigit()
+            ):
                 owner = "@" + str(owner)
 
-            lines.append(f"{index}. {item.get('id')}")
-            lines.append(f"└ 👤 افزوده شده توسط: {owner}")
+            lines.append(
+                f"{index}. {item.get('id')}"
+            )
+            lines.append(
+                f"└ 👤 افزوده شده توسط: {owner}"
+            )
             lines.append("")
 
     keyboard = InlineKeyboardMarkup()
@@ -131,7 +163,10 @@ def channels_stats_page(page=0):
         )
 
     if nav:
-        keyboard.add(*nav, row=1)
+        keyboard.add(
+            *nav,
+            row=1,
+        )
 
     keyboard.add(
         InlineKeyboardButton(
@@ -149,6 +184,10 @@ def channels_stats_text(page=0):
     return text
 
 
+# ==========================================================
+# User Management
+# ==========================================================
+
 def _user_rows():
     rows = []
     users = load_users(force=True)
@@ -159,7 +198,7 @@ def _user_rows():
 
         info = subscription_info(user_id)
 
-        # فقط کاربران دارای اشتراک فعال
+        # فقط کاربران دارای اشتراک فعال در دکمه‌ها
         if not info["active"]:
             continue
 
@@ -274,6 +313,10 @@ def users_manage_text(page=0):
             )
 
             row_i += 1
+
+    # ======================================================
+    # Pagination
+    # ======================================================
 
     nav = []
 
@@ -536,7 +579,7 @@ def prices_menu():
 
 @bot.event
 async def on_callback(callback: CallbackQuery):
-    data = callback.data or ""
+    data = str(callback.data or "")
     user_id = callback.from_user.id
 
     if not (
@@ -568,19 +611,23 @@ async def on_callback(callback: CallbackQuery):
     ):
         page = 0
 
-        if (
-            data.startswith("ad_cstats_")
-            and data[10:].isdigit()
-        ):
-            page = int(data[10:])
+        if data.startswith("ad_cstats_"):
+            page_text = data.split(
+                "ad_cstats_",
+                1,
+            )[1]
 
-        elif (
-            data.startswith("channel_stats_")
-            and data.split("_")[-1].isdigit()
-        ):
-            page = int(
-                data.split("_")[-1]
-            )
+            if page_text.isdigit():
+                page = int(page_text)
+
+        elif data.startswith("channel_stats_"):
+            page_text = data.split(
+                "channel_stats_",
+                1,
+            )[1]
+
+            if page_text.isdigit():
+                page = int(page_text)
 
         text, keyboard = channels_stats_page(page)
 
@@ -592,9 +639,9 @@ async def on_callback(callback: CallbackQuery):
 
         return
 
-    # ==========================
-    # User Management
-    # ==========================
+    # ======================================================
+    # User Management Pagination
+    # ======================================================
 
     if data == "ad_umgmt":
         text, keyboard = users_manage_text(0)
@@ -613,6 +660,7 @@ async def on_callback(callback: CallbackQuery):
             1,
         )[1]
 
+        # فقط شماره صفحه معتبر قبول شود
         if not page_text.isdigit():
             return
 
