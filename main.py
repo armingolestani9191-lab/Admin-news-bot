@@ -9,7 +9,6 @@ from utils import add_emoji
 from category_engine import detect_category_advanced, news_matches_channel
 from ai import translate_news
 from analytics import record_message, snapshot_members
-from commenter import extract_message_id, post_comment, remember_post
 from news_targets import active_news_channels
 from quiet_hours import is_24h, is_channel_open, news_after_wake, schedule_of
 from prices import (
@@ -216,20 +215,6 @@ def send_news_to_channel(channel, news):
     if channel.get("send_image", True) and image:
         return send_photo(channel["id"], image, message)
     return send_message(channel["id"], message)
-
-
-def maybe_comment(channel, result):
-    if not channel.get("comment_on"):
-        return
-    text = (channel.get("comment_text") or "").strip()
-    if not text:
-        return
-    message_id = extract_message_id(result)
-    remember_post(channel.get("user_id"), channel["id"], message_id)
-    time.sleep(0.4)
-    comment = post_comment(channel["id"], text, message_id)
-    if not comment.get("ok"):
-        print(f"⚠️ کامنت {channel['id']} نرفت: {comment.get('description', '')[:120]}")
 
 
 def mark_forbidden(channel_id):
