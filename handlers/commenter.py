@@ -1,30 +1,38 @@
-import sqlite3
 import time
+import requests
+from config import BOT_TOKEN
 
-DB_PATH = "/data/bot.db"
+BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
+_LINKED = {}
 
-def save_comment(user_id: int, channel_id: int, text: str):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO comments (channel_id, user_id, message, timestamp)
-        VALUES (?, ?, ?, ?)
-    ''', (channel_id, user_id, text, int(time.time())))
-    conn.commit()
-    conn.close()
+def _call(method, payload):
+    try:
+        response = requests.post(f"{BASE_URL}/{method}", json=payload, timeout=10)
+        data = response.json() if response.content else {"ok": False}
+        result = data.get("result") or {}
+        message_id = result.get("message_id") if isinstance(result, dict) else None
+        return {"ok": data.get("ok", False), "message_id": int(message_id) if message_id else None}
+    except:
+        return {"ok": False}
 
-def remember_post(owner_id: int, channel_id: int, message_id: int):
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute('''
-        INSERT OR IGNORE INTO sent_comments (channel_id, message_id)
-        VALUES (?, ?)
-    ''', (channel_id, message_id))
-    conn.commit()
-    conn.close()
+def get_linked_chat(channel_id):
+    if channel_id in _LINKED and time.time() - _LINKED[channel_id][0] < 180:
+        return _LINKED[channel_id][1]
+    data = _call("getChat", {"chat_id": channel_id})
+    result = data.get("result") or {}
+    linked = result.get("discussion_chat_id") or result.get("linked_chat_id") or result.get("linked_chat")
+    if isinstance(linked, dict):
+        linked = linked.get("id") or linked.get("chat_id")
+    _LINKED[channel_id] = (time.time(), linked)
+    return linked
 
 def post_comment(channel_id: int, text: str, reply_to: int = None):
-    # اینجا کد واقعی ارسال کامنت رو بنویس (مثلاً با bale API)
-    # مثال ساده:
-    # bot.send_message(channel_id, f"💬 {text}", reply_to_message_id=reply_to)
-    pass
+    if not text.strip():
+        return
+    group_id = get_linked_chat(channel_id)
+    if not group_id:
+        return
+    payload = {"chat_id": group_id, "text": text}
+    if reply_to:
+        payload["reply_to_message_id"] = reply_to
+    _call("sendMessage", payload)
