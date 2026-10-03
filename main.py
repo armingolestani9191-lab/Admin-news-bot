@@ -306,7 +306,6 @@ def send_one_to_channel(channel, news_list):
                 print(f"❌ ارسال ناموفق بود: {live['id']}")
                 continue
             mark_news_sent(live["id"], latest_news.get("link"))
-            maybe_comment(live, result)
             remember_turn(live, turn + offset + 1)
             age_min = max(0, int((time.time() - float(latest_news.get("published") or time.time())) // 60))
             categories = live.get("categories") or ["همه"]
