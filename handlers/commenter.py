@@ -5,9 +5,7 @@ import requests
 from config import BOT_TOKEN
 from users import _patch_channel
 
-
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
-
 _LINKED = {}
 
 
@@ -40,19 +38,21 @@ def _call(method, payload):
             message_id = result
 
         return {
-            "ok": (
-                bool(data.get("ok"))
-                and response.status_code == 200
-            ),
+            "ok": bool(data.get("ok"))
+            and response.status_code == 200,
+
             "code": response.status_code,
+
             "description": str(
                 data.get("description") or ""
             ),
+
             "message_id": (
                 int(message_id)
                 if message_id
                 else None
             ),
+
             "raw": data,
         }
 
@@ -86,7 +86,6 @@ def extract_message_id(result):
     )
 
     if isinstance(body, dict):
-
         mid = (
             body.get("message_id")
             or body.get("id")
@@ -103,21 +102,19 @@ def extract_message_id(result):
 def get_linked_chat(channel_id):
     cached = _LINKED.get(channel_id)
 
-    if (
-        cached
-        and time.time() - cached[0] < 180
-    ):
+    if cached and time.time() - cached[0] < 180:
         return cached[1]
 
     data = _call(
         "getChat",
         {
-            "chat_id": channel_id,
+            "chat_id": channel_id
         },
     )
 
     result = (
-        (data.get("raw") or {}).get("result")
+        (data.get("raw") or {})
+        .get("result")
         or {}
     )
 
@@ -145,8 +142,7 @@ def get_linked_chat(channel_id):
     else:
         print(
             f"⚠️ گروه دیدگاه برای {channel_id} "
-            f"پیدا نشد | "
-            f"{data.get('description')}"
+            f"پیدا نشد | {data.get('description')}"
         )
 
     return linked
@@ -155,12 +151,18 @@ def get_linked_chat(channel_id):
 def _send_to_group(
     group_id,
     text,
+    reply_to=None,
     extra=None,
 ):
     payload = {
         "chat_id": group_id,
         "text": text,
     }
+
+    if reply_to:
+        payload[
+            "reply_to_message_id"
+        ] = int(reply_to)
 
     if extra:
         payload.update(extra)
@@ -178,16 +180,7 @@ def post_comment(
     group_message_id=None,
     group_id=None,
 ):
-    """
-    ارسال کامنت فقط به‌صورت Reply به پست کانال.
-
-    اگر reply قابل ایجاد نباشد:
-    پیام معمولی داخل گروه ارسال نمی‌شود.
-    """
-
-    text = (
-        text or ""
-    ).strip()
+    text = (text or "").strip()
 
     if not text:
         return {
@@ -206,78 +199,60 @@ def post_comment(
             "description": "no-linked-group",
         }
 
-    # اگر شناسه پیام متناظر گروه را از قبل داشته باشیم،
-    # مستقیماً به همان Reply می‌کنیم.
     if group_message_id:
-        try:
-            result = _send_to_group(
-                target_group,
-                text,
-                {
-                    "reply_to_message_id": int(
-                        group_message_id
-                    ),
-                },
-            )
+        result = _send_to_group(
+            target_group,
+            text,
+            group_message_id,
+        )
 
-            if result.get("ok"):
-                print(
-                    f"💬 دیدگاه در گروه "
-                    f"{target_group} نوشته شد."
-                )
-                return result
-
-        except Exception as error:
+        if result.get("ok"):
             print(
-                f"⚠️ خطای reply گروه: {error}"
+                f"💬 دیدگاه در گروه "
+                f"{target_group} نوشته شد"
             )
-
-    # -------------------------------------------------
-    # روش اصلی:
-    # Bale باید پست channel را به thread دیدگاه
-    # همان کانال متصل کند.
-    # -------------------------------------------------
-    if reply_to:
-        try:
-            result = _send_to_group(
-                target_group,
-                text,
-                {
-                    "reply_parameters": {
-                        "message_id": int(
-                            reply_to
-                        ),
-                        "chat_id": channel_id,
-                    }
-                },
-            )
-
-            if result.get("ok"):
-                print(
-                    f"💬 کامنت زیر پست "
-                    f"{channel_id}:{reply_to} "
-                    f"ارسال شد."
-                )
-                return result
-
-            print(
-                f"⚠️ Reply به پست "
-                f"{channel_id}:{reply_to} "
-                f"ناموفق بود: "
-                f"{result.get('description', '')[:160]}"
-            )
-
             return result
 
-        except Exception as error:
-            return {
-                "ok": False,
-                "description": str(error),
-            }
+    if reply_to:
+        result = _send_to_group(
+            target_group,
+            text,
+            extra={
+                "reply_parameters": {
+                    "message_id": int(reply_to),
+                    "chat_id": channel_id,
+                }
+            },
+        )
+
+        if result.get("ok"):
+            print(
+                "💬 دیدگاه با "
+                "reply_parameters نوشته شد"
+            )
+            return result
+
+        result = _send_to_group(
+            target_group,
+            text,
+            reply_to,
+        )
+
+        if result.get("ok"):
+            print(
+                "💬 دیدگاه با "
+                "reply_to روی گروه نوشته شد"
+            )
+            return result
+
+    print(
+        f"⚠️ دیدگاه {channel_id} نرفت — "
+        "به کانال چیزی نمی‌فرستم"
+    )
 
     return {
         "ok": False,
-        "description": "missing-reply-target",
+        "description": "group-send-failed",
     }
 
 
@@ -286,19 +261,13 @@ def remember_post(
     channel_id,
     message_id,
 ):
-    if (
-        user_id
-        and channel_id
-        and message_id
-    ):
+    if user_id and channel_id and message_id:
         try:
             _patch_channel(
                 user_id,
                 channel_id,
                 {
-                    "last_post_id": int(
-                        message_id
-                    )
+                    "last_post_id": int(message_id)
                 },
             )
         except Exception:
