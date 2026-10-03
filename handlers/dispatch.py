@@ -128,7 +128,6 @@ def _callback_modules(data):
     elif data == "m_stats" or data.startswith("stats_"):
         names = ("stats",)
 
-    # پرداخت و لایسنس
     elif (
         data.startswith("plan_")
         or data.startswith("pay_")
@@ -137,7 +136,7 @@ def _callback_modules(data):
     ):
         names = ("shop",)
 
-    elif data in ("csave", "cat_save") or data.startswith((
+    elif data == "csave" or data == "cat_save" or data.startswith((
         "csel_",
         "cat_",
         "time_",
@@ -322,6 +321,36 @@ async def on_message(message: Message):
     if not once(message, "dispatch_msg"):
         return
 
+    # -------------------------------------------------
+    # اول از همه پست کانال را بررسی می‌کنیم.
+    # این بخش باید قبل از from_user باشد چون
+    # channel post لزوماً from_user ندارد.
+    # -------------------------------------------------
+    chat = getattr(message, "chat", None)
+
+    chat_type = str(
+        getattr(chat, "type", "") or ""
+    )
+
+    if chat_type == "channel":
+        try:
+            from handlers.comments import handle_channel_post
+
+            handled = handle_channel_post(message)
+
+            if handled:
+                return
+
+        except Exception as error:
+            print("comment channel handler error:", error)
+
+        return
+
+    # -------------------------------------------------
+    # از اینجا به بعد منطق قبلی پیام‌های کاربر
+    # بدون تغییر ادامه پیدا می‌کند.
+    # -------------------------------------------------
+
     if message.from_user is None:
         return
 
@@ -344,6 +373,16 @@ async def on_message(message: Message):
         )
         return
 
+    # پیام‌های گروه و سوپرگروه وارد منطق
+    # پیام‌های خصوصی ربات نمی‌شوند.
+    if chat_type in (
+        "group",
+        "supergroup",
+    ):
+        # فقط اگر پیام مربوط به state فعال باشد،
+        # اجازه بدهیم ماژول مربوطه آن را بررسی کند.
+        pass
+
     for module in _message_modules(
         user_id,
         text,
@@ -351,4 +390,4 @@ async def on_message(message: Message):
         await _safe(
             getattr(module, "on_message", None),
             message,
-        )
+    )
