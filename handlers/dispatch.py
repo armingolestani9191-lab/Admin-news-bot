@@ -321,11 +321,6 @@ async def on_message(message: Message):
     if not once(message, "dispatch_msg"):
         return
 
-    # -------------------------------------------------
-    # اول از همه پست کانال را بررسی می‌کنیم.
-    # این بخش باید قبل از from_user باشد چون
-    # channel post لزوماً from_user ندارد.
-    # -------------------------------------------------
     chat = getattr(message, "chat", None)
 
     chat_type = str(
@@ -345,11 +340,6 @@ async def on_message(message: Message):
             print("comment channel handler error:", error)
 
         return
-
-    # -------------------------------------------------
-    # از اینجا به بعد منطق قبلی پیام‌های کاربر
-    # بدون تغییر ادامه پیدا می‌کند.
-    # -------------------------------------------------
 
     if message.from_user is None:
         return
@@ -373,14 +363,10 @@ async def on_message(message: Message):
         )
         return
 
-    # پیام‌های گروه و سوپرگروه وارد منطق
-    # پیام‌های خصوصی ربات نمی‌شوند.
     if chat_type in (
         "group",
         "supergroup",
     ):
-        # فقط اگر پیام مربوط به state فعال باشد،
-        # اجازه بدهیم ماژول مربوطه آن را بررسی کند.
         pass
 
     for module in _message_modules(
@@ -390,4 +376,4 @@ async def on_message(message: Message):
         await _safe(
             getattr(module, "on_message", None),
             message,
-    )
+            )
