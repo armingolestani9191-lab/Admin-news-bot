@@ -7,7 +7,7 @@ from keyboards import channel_pick_menu
 from states import set_state, get_state, clear_state
 from subscription import has_subscription
 from handlers.home import home_components, back_only
-from commenter import post_comment, remember_post
+from commenter import post_comment
 
 
 PRESETS = [
@@ -66,9 +66,12 @@ def find_live_channel_by_keys(keys):
                 channel.get("id") or ""
             )
 
+            normalized = cid.lstrip("@").lower()
+
             if (
                 cid in keys
-                or cid.lstrip("@").lower() in keys
+                or normalized in keys
+                or ("@" + normalized) in keys
             ):
                 return str(user_id), channel
 
@@ -404,7 +407,17 @@ async def on_callback(callback: CallbackQuery):
         return
 
 
-def _handle_discussion_or_channel(message):
+# ---------------------------------------------------------
+# منطق اصلی کامنت پست کانال
+# ---------------------------------------------------------
+
+def handle_channel_post(message):
+    """
+    فقط پست واقعی کانال را پردازش می‌کند.
+
+    گروه و سوپرگروه اینجا اصلاً وارد نمی‌شوند.
+    """
+
     chat = getattr(
         message,
         "chat",
@@ -418,8 +431,7 @@ def _handle_discussion_or_channel(message):
         getattr(chat, "type", "") or ""
     )
 
-    # پیام‌های گروه/سوپرگروه اصلاً
-    # وارد سیستم ارسال کامنت نمی‌شوند.
+    # فقط CHANNEL
     if chat_type != "channel":
         return False
 
@@ -427,49 +439,93 @@ def _handle_discussion_or_channel(message):
         _keys_of_chat(chat)
     )
 
+    # کانال ثبت نشده برای این ربات
     if not channel:
         return True
 
-    # خاموش = هیچ کاری
+    # -------------------------------------------------
+    # کامنت خاموش = هیچ کاری
+    # -------------------------------------------------
     if not channel.get("comment_on"):
         return True
 
+    # -------------------------------------------------
+    # متن کامنت وجود ندارد = هیچ کاری
+    # -------------------------------------------------
     text = (
         channel.get("comment_text") or ""
     ).strip()
 
-    # بدون متن = هیچ کاری
     if not text:
         return True
 
-    incoming = (
-        message.content or ""
-    ).strip()
-
-    mid = (
+    # -------------------------------------------------
+    # شناسه پست کانال
+    # -------------------------------------------------
+    message_id = (
         getattr(message, "message_id", None)
         or getattr(message, "id", None)
     )
 
-    if incoming == text:
+    if not message_id:
+        print(
+            f"⚠️ شناسه پست کانال {channel.get('id')} پیدا نشد."
+        )
         return True
 
-    remember_post(
-        owner_id,
-        channel.get("id"),
-        mid,
+    try:
+        message_id = int(message_id)
+    except Exception:
+        return True
+
+    # -------------------------------------------------
+    # جلوگیری از کامنت تکراری برای همان پست
+    # -------------------------------------------------
+    previous_id = channel.get(
+        "last_commented_post_id"
     )
+
+    try:
+        if previous_id is not None:
+            if int(previous_id) == message_id:
+                return True
+    except Exception:
+        pass
 
     print(
-        f"💬 پست کانال {channel.get('id')} "
-        f"— ارسال فقط به گروه دیدگاه"
+        f"💬 پست جدید کانال {channel.get('id')} "
+        f"| post_id={message_id}"
     )
 
-    post_comment(
+    # -------------------------------------------------
+    # فقط یک بار تلاش برای کامنت زیر همان پست
+    # -------------------------------------------------
+    result = post_comment(
         channel.get("id"),
         text,
-        reply_to=mid,
+        reply_to=message_id,
     )
+
+    if result.get("ok"):
+        _patch_channel(
+            owner_id,
+            channel.get("id"),
+            {
+                "last_commented_post_id": message_id,
+            },
+        )
+
+        print(
+            f"✅ کامنت کانال {channel.get('id')} "
+            f"برای پست {message_id} ارسال شد."
+        )
+
+    else:
+        print(
+            f"⚠️ کامنت کانال {channel.get('id')} "
+            f"برای پست {message_id} ارسال نشد: "
+            f"{result.get('description', '')[:160]}"
+        )
 
     return True
 
@@ -477,15 +533,12 @@ def _handle_discussion_or_channel(message):
 @bot.event
 async def on_message(message: Message):
 
-    # پیام کانال را اگر این handler دریافت کرد،
-    # فقط برای منطق کانال بررسی می‌کنیم.
-    if _handle_discussion_or_channel(message):
-        return
+    # -------------------------------------------------
+    # این handler فقط برای سازگاری قبلی نگه داشته شده.
+    # Router مرکزی dispatch پست‌های کانال را مستقیماً
+    # به handle_channel_post می‌دهد.
+    # -------------------------------------------------
 
-    if message.from_user is None:
-        return
-
-    # پیام‌های گروه دیدگاه نباید پاسخ خودکار بگیرند.
     chat = getattr(
         message,
         "chat",
@@ -496,10 +549,19 @@ async def on_message(message: Message):
         getattr(chat, "type", "") or ""
     )
 
+    # پیام‌های گروه دیدگاه:
+    # هیچ پاسخ خودکاری ندارند.
     if chat_type in (
         "group",
         "supergroup",
     ):
+        return
+
+    if chat_type == "channel":
+        handle_channel_post(message)
+        return
+
+    if message.from_user is None:
         return
 
     user_id = message.from_user.id
@@ -539,4 +601,4 @@ async def on_message(message: Message):
         "✅ متن کامنت ذخیره شد و فعال شد.\n\n"
         + comment_text_view(view),
         components=comment_menu(view),
-    )
+            )
