@@ -407,17 +407,7 @@ async def on_callback(callback: CallbackQuery):
         return
 
 
-# ---------------------------------------------------------
-# منطق اصلی کامنت پست کانال
-# ---------------------------------------------------------
-
 def handle_channel_post(message):
-    """
-    فقط پست واقعی کانال را پردازش می‌کند.
-
-    گروه و سوپرگروه اینجا اصلاً وارد نمی‌شوند.
-    """
-
     chat = getattr(
         message,
         "chat",
@@ -431,7 +421,6 @@ def handle_channel_post(message):
         getattr(chat, "type", "") or ""
     )
 
-    # فقط CHANNEL
     if chat_type != "channel":
         return False
 
@@ -439,19 +428,12 @@ def handle_channel_post(message):
         _keys_of_chat(chat)
     )
 
-    # کانال ثبت نشده برای این ربات
     if not channel:
         return True
 
-    # -------------------------------------------------
-    # کامنت خاموش = هیچ کاری
-    # -------------------------------------------------
     if not channel.get("comment_on"):
         return True
 
-    # -------------------------------------------------
-    # متن کامنت وجود ندارد = هیچ کاری
-    # -------------------------------------------------
     text = (
         channel.get("comment_text") or ""
     ).strip()
@@ -459,9 +441,6 @@ def handle_channel_post(message):
     if not text:
         return True
 
-    # -------------------------------------------------
-    # شناسه پست کانال
-    # -------------------------------------------------
     message_id = (
         getattr(message, "message_id", None)
         or getattr(message, "id", None)
@@ -478,9 +457,6 @@ def handle_channel_post(message):
     except Exception:
         return True
 
-    # -------------------------------------------------
-    # جلوگیری از کامنت تکراری برای همان پست
-    # -------------------------------------------------
     previous_id = channel.get(
         "last_commented_post_id"
     )
@@ -497,9 +473,6 @@ def handle_channel_post(message):
         f"| post_id={message_id}"
     )
 
-    # -------------------------------------------------
-    # فقط یک بار تلاش برای کامنت زیر همان پست
-    # -------------------------------------------------
     result = post_comment(
         channel.get("id"),
         text,
@@ -533,12 +506,6 @@ def handle_channel_post(message):
 @bot.event
 async def on_message(message: Message):
 
-    # -------------------------------------------------
-    # این handler فقط برای سازگاری قبلی نگه داشته شده.
-    # Router مرکزی dispatch پست‌های کانال را مستقیماً
-    # به handle_channel_post می‌دهد.
-    # -------------------------------------------------
-
     chat = getattr(
         message,
         "chat",
@@ -549,8 +516,6 @@ async def on_message(message: Message):
         getattr(chat, "type", "") or ""
     )
 
-    # پیام‌های گروه دیدگاه:
-    # هیچ پاسخ خودکاری ندارند.
     if chat_type in (
         "group",
         "supergroup",
