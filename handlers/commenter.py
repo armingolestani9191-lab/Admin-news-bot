@@ -5,7 +5,9 @@ import requests
 from config import BOT_TOKEN
 from users import _patch_channel
 
+
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
+
 _LINKED = {}
 
 
@@ -38,21 +40,19 @@ def _call(method, payload):
             message_id = result
 
         return {
-            "ok": bool(data.get("ok"))
-            and response.status_code == 200,
-
+            "ok": (
+                bool(data.get("ok"))
+                and response.status_code == 200
+            ),
             "code": response.status_code,
-
             "description": str(
                 data.get("description") or ""
             ),
-
             "message_id": (
                 int(message_id)
                 if message_id
                 else None
             ),
-
             "raw": data,
         }
 
@@ -92,7 +92,11 @@ def extract_message_id(result):
         )
 
         try:
-            return int(mid) if mid else None
+            return (
+                int(mid)
+                if mid
+                else None
+            )
         except Exception:
             return None
 
@@ -113,8 +117,7 @@ def get_linked_chat(channel_id):
     )
 
     result = (
-        (data.get("raw") or {})
-        .get("result")
+        (data.get("raw") or {}).get("result")
         or {}
     )
 
@@ -180,7 +183,9 @@ def post_comment(
     group_message_id=None,
     group_id=None,
 ):
-    text = (text or "").strip()
+    text = (
+        text or ""
+    ).strip()
 
     if not text:
         return {
@@ -199,6 +204,9 @@ def post_comment(
             "description": "no-linked-group",
         }
 
+    # مهم:
+    # اینجا باید ID همان پیام پست کانال
+    # که داخل گروه دیدگاه ایجاد شده استفاده شود.
     if group_message_id:
         result = _send_to_group(
             target_group,
@@ -211,48 +219,27 @@ def post_comment(
                 f"💬 دیدگاه در گروه "
                 f"{target_group} نوشته شد"
             )
+
             return result
 
-    if reply_to:
-        result = _send_to_group(
-            target_group,
-            text,
-            extra={
-                "reply_parameters": {
-                    "message_id": int(reply_to),
-                    "chat_id": channel_id,
-                }
-            },
+        print(
+            f"⚠️ ارسال کامنت روی پیام اصلی "
+            f"دیدگاه شکست خورد: "
+            f"{result.get('description', '')[:200]}"
         )
 
-        if result.get("ok"):
-            print(
-                "💬 دیدگاه با "
-                "reply_parameters نوشته شد"
-            )
-            return result
+        return result
 
-        result = _send_to_group(
-            target_group,
-            text,
-            reply_to,
-        )
-
-        if result.get("ok"):
-            print(
-                "💬 دیدگاه با "
-                "reply_to روی گروه نوشته شد"
-            )
-            return result
-
+    # دیگر از ID پست کانال به‌عنوان
+    # reply در گروه استفاده نمی‌کنیم.
     print(
-        f"⚠️ دیدگاه {channel_id} نرفت — "
-        "به کانال چیزی نمی‌فرستم"
+        f"⚠️ پیام اصلی دیدگاه برای کانال "
+        f"{channel_id} پیدا نشد."
     )
 
     return {
         "ok": False,
-        "description": "group-send-failed",
+        "description": "discussion-root-not-found",
     }
 
 
@@ -267,7 +254,9 @@ def remember_post(
                 user_id,
                 channel_id,
                 {
-                    "last_post_id": int(message_id)
+                    "last_post_id": int(
+                        message_id
+                    )
                 },
             )
         except Exception:
