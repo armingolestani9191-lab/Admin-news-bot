@@ -337,9 +337,35 @@ async def on_message(message: Message):
                 return
 
         except Exception as error:
-            print("comment channel handler error:", error)
+            print(
+                "comment channel handler error:",
+                error,
+            )
 
         return
+
+    # فقط پیام اصلیِ خودکارِ پست کانال در گروه دیدگاه
+    # وارد منطق کامنت می‌شود.
+    #
+    # پیام‌های عادی کاربران در گروه دیدگاه توسط
+    # handle_discussion_message رد می‌شوند.
+    if chat_type in (
+        "group",
+        "supergroup",
+    ):
+        try:
+            from handlers.comments import handle_discussion_message
+
+            handled = handle_discussion_message(message)
+
+            if handled:
+                return
+
+        except Exception as error:
+            print(
+                "discussion comment handler error:",
+                error,
+            )
 
     if message.from_user is None:
         return
@@ -376,4 +402,4 @@ async def on_message(message: Message):
         await _safe(
             getattr(module, "on_message", None),
             message,
-            )
+    )
