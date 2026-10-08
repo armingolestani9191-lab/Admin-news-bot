@@ -154,12 +154,11 @@ def get_linked_chat(channel_id):
 
 def _send_to_group(group_id, text):
     """
-    ارسال کاملاً عادی به گروه دیدگاه.
+    ارسال پیام کاملاً عادی به گروه دیدگاه.
 
-    مهم:
-    هیچ reply_to_message_id
-    و هیچ reply_parameters
-    ارسال نمی‌شود.
+    هیچ Reply استفاده نمی‌شود.
+    هیچ reply_to_message_id ارسال نمی‌شود.
+    هیچ reply_parameters ارسال نمی‌شود.
     """
 
     payload = {
@@ -181,15 +180,13 @@ def post_comment(
     group_id=None,
 ):
     """
-    ارسال کامنت ساده.
+    ارسال متن تنظیم‌شده توسط کاربر.
 
-    متن ارسالی دقیقاً همان متنی است که کاربر تنظیم کرده.
-    هیچ Reply یا متن اضافه‌ای استفاده نمی‌شود.
+    فقط خود متن ارسال می‌شود.
+    هیچ اطلاعات اضافه‌ای به پیام اضافه نمی‌شود.
     """
 
-    text = (
-        text or ""
-    ).strip()
+    text = (text or "").strip()
 
     if not text:
         return {
@@ -197,8 +194,6 @@ def post_comment(
             "description": "empty",
         }
 
-    # اگر گروه دیدگاه از قبل پیدا شده باشد
-    # همان را استفاده می‌کنیم.
     target_group = (
         group_id
         or get_linked_chat(channel_id)
@@ -210,13 +205,15 @@ def post_comment(
             "description": "no-linked-group",
         }
 
-    # فقط متن ساده ارسال می‌شود.
+    # عمداً هیچ‌کدام از این‌ها استفاده نمی‌شوند:
     #
-    # عمداً این موارد استفاده نمی‌شوند:
+    # reply_to
+    # group_message_id
     # reply_to_message_id
     # reply_parameters
-    # group_message_id
-    # reply_to
+    #
+    # فقط متن ساده ارسال می‌شود.
+
     result = _send_to_group(
         target_group,
         text,
