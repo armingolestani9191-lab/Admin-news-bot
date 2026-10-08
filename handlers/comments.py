@@ -1,12 +1,28 @@
-from bale import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from bale import (
+    CallbackQuery,
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 
 from client import bot
 from ui import edit_message
-from users import get_user, load_users, _patch_channel
+from users import (
+    get_user,
+    load_users,
+    _patch_channel,
+)
 from keyboards import channel_pick_menu
-from states import set_state, get_state, clear_state
+from states import (
+    set_state,
+    get_state,
+    clear_state,
+)
 from subscription import has_subscription
-from handlers.home import home_components, back_only
+from handlers.home import (
+    home_components,
+    back_only,
+)
 from commenter import post_comment
 
 
@@ -25,6 +41,7 @@ def find_channel(user, channel_id):
     for item in user.get("channels") or []:
         if item.get("id") == channel_id:
             return item
+
     return None
 
 
@@ -34,7 +51,11 @@ def _keys_of_chat(obj):
     if not obj:
         return keys
 
-    username = getattr(obj, "username", None)
+    username = getattr(
+        obj,
+        "username",
+        None,
+    )
 
     chat_id = str(
         getattr(obj, "id", "")
@@ -66,14 +87,19 @@ def find_live_channel_by_keys(keys):
                 channel.get("id") or ""
             )
 
-            normalized = cid.lstrip("@").lower()
+            normalized = (
+                cid.lstrip("@").lower()
+            )
 
             if (
                 cid in keys
                 or normalized in keys
                 or ("@" + normalized) in keys
             ):
-                return str(user_id), channel
+                return (
+                    str(user_id),
+                    channel,
+                )
 
     return None, None
 
@@ -323,6 +349,9 @@ async def on_callback(callback: CallbackQuery):
             enabled=new_value,
         )
 
+        if not channel:
+            return
+
         await edit_message(
             callback,
             comment_text_view(channel),
@@ -338,6 +367,12 @@ async def on_callback(callback: CallbackQuery):
             "",
             1,
         )
+
+        if not find_channel(
+            user,
+            channel_id,
+        ):
+            return
 
         set_state(
             user_id,
@@ -384,6 +419,12 @@ async def on_callback(callback: CallbackQuery):
         ):
             return
 
+        if not find_channel(
+            user,
+            channel_id,
+        ):
+            return
+
         channel = save_comment(
             user_id,
             channel_id,
@@ -421,7 +462,9 @@ def _comment_on_discussion_root(
         return True
 
     try:
-        channel_post_id = int(channel_post_id)
+        channel_post_id = int(
+            channel_post_id
+        )
     except Exception:
         return True
 
@@ -432,13 +475,26 @@ def _comment_on_discussion_root(
     try:
         if previous_id is not None:
             if int(previous_id) == channel_post_id:
+                print(
+                    f"ℹ️ کامنت پست "
+                    f"{channel_post_id} "
+                    f"قبلاً ارسال شده."
+                )
                 return True
     except Exception:
         pass
 
     group_message_id = (
-        getattr(message, "message_id", None)
-        or getattr(message, "id", None)
+        getattr(
+            message,
+            "message_id",
+            None,
+        )
+        or getattr(
+            message,
+            "id",
+            None,
+        )
     )
 
     if not group_message_id:
@@ -449,20 +505,34 @@ def _comment_on_discussion_root(
         return True
 
     try:
-        group_message_id = int(group_message_id)
+        group_message_id = int(
+            group_message_id
+        )
     except Exception:
         return True
 
     group_id = getattr(
-        getattr(message, "chat", None),
+        getattr(
+            message,
+            "chat",
+            None,
+        ),
         "id",
         None,
     )
 
+    if not group_id:
+        print(
+            f"⚠️ شناسه گروه دیدگاه برای "
+            f"{channel.get('id')} پیدا نشد."
+        )
+        return True
+
     print(
         f"💬 پست کانال {channel.get('id')} "
         f"| post_id={channel_post_id} "
-        f"| discussion_id={group_message_id}"
+        f"| discussion_id={group_message_id} "
+        f"| group_id={group_id}"
     )
 
     result = post_comment(
@@ -473,6 +543,7 @@ def _comment_on_discussion_root(
     )
 
     if result.get("ok"):
+
         _patch_channel(
             owner_id,
             channel.get("id"),
@@ -482,14 +553,19 @@ def _comment_on_discussion_root(
         )
 
         print(
-            f"✅ کامنت کانال {channel.get('id')} "
-            f"برای پست {channel_post_id} ارسال شد."
+            f"✅ کامنت کانال "
+            f"{channel.get('id')} "
+            f"برای پست "
+            f"{channel_post_id} ارسال شد."
         )
 
     else:
+
         print(
-            f"⚠️ کامنت کانال {channel.get('id')} "
-            f"برای پست {channel_post_id} ارسال نشد: "
+            f"⚠️ کامنت کانال "
+            f"{channel.get('id')} "
+            f"برای پست "
+            f"{channel_post_id} ارسال نشد: "
             f"{result.get('description', '')[:160]}"
         )
 
@@ -507,7 +583,12 @@ def handle_channel_post(message):
         return False
 
     chat_type = str(
-        getattr(chat, "type", "") or ""
+        getattr(
+            chat,
+            "type",
+            "",
+        )
+        or ""
     )
 
     if chat_type != "channel":
@@ -524,14 +605,24 @@ def handle_channel_post(message):
         return True
 
     message_id = (
-        getattr(message, "message_id", None)
-        or getattr(message, "id", None)
+        getattr(
+            message,
+            "message_id",
+            None,
+        )
+        or getattr(
+            message,
+            "id",
+            None,
+        )
     )
 
     if message_id:
         print(
-            f"📌 پست کانال {channel.get('id')} "
-            f"دریافت شد | post_id={message_id}"
+            f"📌 پست کانال "
+            f"{channel.get('id')} "
+            f"دریافت شد | "
+            f"post_id={message_id}"
         )
 
     return True
@@ -548,7 +639,12 @@ def handle_discussion_message(message):
         return False
 
     chat_type = str(
-        getattr(chat, "type", "") or ""
+        getattr(
+            chat,
+            "type",
+            "",
+        )
+        or ""
     )
 
     if chat_type not in (
@@ -558,7 +654,8 @@ def handle_discussion_message(message):
         return False
 
     # فقط پیام خودکار پست کانال را قبول می‌کنیم.
-    # پیام‌های عادی کاربران هیچ‌وقت وارد کامنت نمی‌شوند.
+    # پیام عادی کاربران رد می‌شود.
+
     forward_from_chat = getattr(
         message,
         "forward_from_chat",
@@ -580,7 +677,12 @@ def handle_discussion_message(message):
         return False
 
     source_type = str(
-        getattr(source_chat, "type", "") or ""
+        getattr(
+            source_chat,
+            "type",
+            "",
+        )
+        or ""
     )
 
     if source_type != "channel":
@@ -623,13 +725,26 @@ async def on_message(message: Message):
     )
 
     chat_type = str(
-        getattr(chat, "type", "") or ""
+        getattr(
+            chat,
+            "type",
+            "",
+        )
+        or ""
     )
+
+    # مهم:
+    # پیام‌های گروه و سوپرگروه باید اول بررسی شوند
+    # تا پست کانال در گروه دیدگاه شناسایی شود.
+    #
+    # پیام عادی کاربران توسط handle_discussion_message
+    # رد می‌شود و هیچ کامنتی ایجاد نمی‌کند.
 
     if chat_type in (
         "group",
         "supergroup",
     ):
+        handle_discussion_message(message)
         return
 
     if chat_type == "channel":
@@ -676,4 +791,4 @@ async def on_message(message: Message):
         "✅ متن کامنت ذخیره شد و فعال شد.\n\n"
         + comment_text_view(view),
         components=comment_menu(view),
-    )
+        )
