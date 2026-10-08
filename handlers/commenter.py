@@ -5,9 +5,7 @@ import requests
 from config import BOT_TOKEN
 from users import _patch_channel
 
-
 BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
-
 _LINKED = {}
 
 
@@ -92,11 +90,7 @@ def extract_message_id(result):
         )
 
         try:
-            return (
-                int(mid)
-                if mid
-                else None
-            )
+            return int(mid) if mid else None
         except Exception:
             return None
 
@@ -144,9 +138,8 @@ def get_linked_chat(channel_id):
         )
     else:
         print(
-            f"⚠️ گروه دیدگاه برای کانال "
-            f"{channel_id} پیدا نشد | "
-            f"{data.get('description', '')}"
+            f"⚠️ گروه دیدگاه برای {channel_id} پیدا نشد "
+            f"| {data.get('description')}"
         )
 
     return linked
@@ -154,11 +147,12 @@ def get_linked_chat(channel_id):
 
 def _send_to_group(group_id, text):
     """
-    ارسال پیام کاملاً عادی به گروه دیدگاه.
+    ارسال کامنت به صورت پیام عادی.
 
-    هیچ Reply استفاده نمی‌شود.
-    هیچ reply_to_message_id ارسال نمی‌شود.
-    هیچ reply_parameters ارسال نمی‌شود.
+    عمداً هیچ یک از موارد زیر ارسال نمی‌شود:
+    - reply_to_message_id
+    - reply_parameters
+    - message_thread_id
     """
 
     payload = {
@@ -180,10 +174,11 @@ def post_comment(
     group_id=None,
 ):
     """
-    ارسال متن تنظیم‌شده توسط کاربر.
+    ارسال متن کامنت به گروه دیدگاه.
 
-    فقط خود متن ارسال می‌شود.
-    هیچ اطلاعات اضافه‌ای به پیام اضافه نمی‌شود.
+    reply_to و group_message_id فقط برای
+    سازگاری با کدهای قبلی نگه داشته شده‌اند
+    و عمداً استفاده نمی‌شوند.
     """
 
     text = (text or "").strip()
@@ -205,15 +200,7 @@ def post_comment(
             "description": "no-linked-group",
         }
 
-    # عمداً هیچ‌کدام از این‌ها استفاده نمی‌شوند:
-    #
-    # reply_to
-    # group_message_id
-    # reply_to_message_id
-    # reply_parameters
-    #
-    # فقط متن ساده ارسال می‌شود.
-
+    # فقط پیام عادی
     result = _send_to_group(
         target_group,
         text,
@@ -221,18 +208,14 @@ def post_comment(
 
     if result.get("ok"):
         print(
-            f"✅ کامنت ساده کانال "
-            f"{channel_id} در گروه "
-            f"{target_group} ارسال شد."
+            f"💬 کامنت در گروه {target_group} "
+            f"ارسال شد"
         )
-
         return result
 
     print(
-        f"⚠️ ارسال کامنت کانال "
-        f"{channel_id} ناموفق بود | "
-        f"گروه: {target_group} | "
-        f"خطا: "
+        f"⚠️ ارسال کامنت برای {channel_id} "
+        f"ناموفق بود: "
         f"{result.get('description', '')[:200]}"
     )
 
@@ -250,9 +233,7 @@ def remember_post(
                 user_id,
                 channel_id,
                 {
-                    "last_post_id": int(
-                        message_id
-                    )
+                    "last_post_id": int(message_id)
                 },
             )
         except Exception:
