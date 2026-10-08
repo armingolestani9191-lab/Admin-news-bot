@@ -1,5 +1,4 @@
 import time
-
 import requests
 
 from config import BOT_TOKEN
@@ -10,6 +9,10 @@ BASE_URL = f"https://tapi.bale.ai/bot{BOT_TOKEN}"
 
 _LINKED = {}
 
+
+# =========================================================
+# API
+# =========================================================
 
 def _call(method, payload):
     try:
@@ -70,17 +73,21 @@ def _call(method, payload):
         }
 
 
+# =========================================================
+# MESSAGE ID
+# =========================================================
+
 def extract_message_id(result):
     if not isinstance(result, dict):
         return None
 
     message_id = result.get("message_id")
 
-    if message_id:
+    if message_id is not None:
         try:
             return int(message_id)
         except Exception:
-            return None
+            pass
 
     raw = result.get("raw") or {}
 
@@ -97,17 +104,21 @@ def extract_message_id(result):
         )
 
         try:
-            return int(message_id) if message_id else None
+            if message_id is not None:
+                return int(message_id)
         except Exception:
-            return None
+            pass
 
     return None
 
 
+# =========================================================
+# LINKED DISCUSSION CHAT
+# =========================================================
+
 def get_linked_chat(channel_id):
     """
     پیدا کردن گروه دیدگاه متصل به کانال.
-    نتیجه برای مدت کوتاه cache می‌شود.
     """
 
     if not channel_id:
@@ -176,25 +187,34 @@ def get_linked_chat(channel_id):
     return linked
 
 
-def _send_to_group(
+# =========================================================
+# SEND REPLY
+# =========================================================
+
+def send_discussion_reply(
     group_id,
+    discussion_message_id,
     text,
-    reply_to_message_id=None,
 ):
     """
-    ارسال کامنت به گروه دیدگاه.
+    ارسال کامنت به عنوان Reply به پیام پست
+    داخل گروه دیدگاه.
 
-    اگر reply_to_message_id وجود داشته باشد،
-    پیام دقیقاً به همان پیام Reply می‌شود.
-
-    در سیستم کامنت ما این ID همان message_id
-    پست کانال است.
+    خیلی مهم:
+    discussion_message_id باید ID پیام داخل
+    گروه دیدگاه باشد، نه ID پست کانال.
     """
 
     if not group_id:
         return {
             "ok": False,
             "description": "missing-group-id",
+        }
+
+    if discussion_message_id is None:
+        return {
+            "ok": False,
+            "description": "missing-discussion-message-id",
         }
 
     text = (text or "").strip()
@@ -205,31 +225,26 @@ def _send_to_group(
             "description": "empty-text",
         }
 
+    try:
+        discussion_message_id = int(
+            discussion_message_id
+        )
+    except Exception:
+        return {
+            "ok": False,
+            "description": "invalid-discussion-message-id",
+        }
+
     payload = {
         "chat_id": group_id,
         "text": text,
+        "reply_to_message_id": discussion_message_id,
     }
 
-    if reply_to_message_id is not None:
-        try:
-            reply_to_message_id = int(
-                reply_to_message_id
-            )
-
-            payload[
-                "reply_to_message_id"
-            ] = reply_to_message_id
-
-        except Exception:
-            print(
-                f"⚠️ reply_to_message_id نامعتبر بود | "
-                f"value={reply_to_message_id!r}"
-            )
-
     print(
-        f"📤 ارسال کامنت | "
-        f"group_id={group_id} | "
-        f"reply_to={payload.get('reply_to_message_id')} | "
+        f"📤 ارسال Reply کامنت | "
+        f"group={group_id} | "
+        f"discussion_message_id={discussion_message_id} | "
         f"text={text!r}"
     )
 
@@ -240,22 +255,46 @@ def _send_to_group(
 
     if result.get("ok"):
         print(
-            f"✅ کامنت با موفقیت ارسال شد | "
-            f"group_id={group_id} | "
-            f"reply_to={payload.get('reply_to_message_id')} | "
+            f"✅ Reply کامنت ارسال شد | "
+            f"group={group_id} | "
+            f"reply_to={discussion_message_id} | "
             f"message_id={result.get('message_id')}"
         )
     else:
         print(
-            f"❌ ارسال کامنت ناموفق بود | "
-            f"group_id={group_id} | "
-            f"reply_to={payload.get('reply_to_message_id')} | "
+            f"❌ Reply کامنت ارسال نشد | "
+            f"group={group_id} | "
+            f"reply_to={discussion_message_id} | "
             f"code={result.get('code')} | "
             f"{result.get('description', '')}"
         )
 
     return result
 
+
+# =========================================================
+# OLD COMPATIBILITY FUNCTION
+# =========================================================
+
+def _send_to_group(
+    group_id,
+    text,
+    reply_to_message_id=None,
+):
+    """
+    برای سازگاری با کدهای قبلی نگه داشته شده.
+    """
+
+    return send_discussion_reply(
+        group_id,
+        reply_to_message_id,
+        text,
+    )
+
+
+# =========================================================
+# POST COMMENT
+# =========================================================
 
 def post_comment(
     channel_id,
@@ -265,16 +304,13 @@ def post_comment(
     group_id=None,
 ):
     """
-    ارسال کامنت برای پست کانال.
+    ارسال کامنت.
 
-    reply_to:
-        message_id پست کانال.
+    reply_to / group_message_id باید ID پیام پست
+    داخل گروه دیدگاه باشد.
 
-    group_message_id:
-        برای سازگاری با نسخه‌های قبلی نگه داشته شده.
-
-    فقط reply_to استفاده می‌شود.
-    پیام‌های کاربران گروه هیچ نقشی ندارند.
+    هرگز ID مستقیم پست کانال را به عنوان
+    reply_to استفاده نمی‌کنیم.
     """
 
     text = (text or "").strip()
@@ -303,46 +339,32 @@ def post_comment(
             "description": "no-linked-group",
         }
 
-    # مهم:
-    # reply_to همان message_id پست کانال است.
-    reply_message_id = reply_to
+    discussion_message_id = reply_to
 
-    if reply_message_id is None:
-        reply_message_id = group_message_id
+    if discussion_message_id is None:
+        discussion_message_id = group_message_id
 
-    if reply_message_id is None:
+    if discussion_message_id is None:
         print(
-            f"❌ message_id پست برای Reply وجود ندارد | "
+            f"❌ ID پیام پست داخل گروه دیدگاه وجود ندارد | "
             f"channel={channel_id}"
         )
 
         return {
             "ok": False,
-            "description": "missing-reply-message-id",
+            "description": "missing-discussion-message-id",
         }
 
-    result = _send_to_group(
+    return send_discussion_reply(
         target_group,
+        discussion_message_id,
         text,
-        reply_to_message_id=reply_message_id,
     )
 
-    if result.get("ok"):
-        print(
-            f"💬 کامنت Reply شد | "
-            f"channel={channel_id} | "
-            f"reply_to={reply_message_id}"
-        )
 
-        return result
-
-    print(
-        f"⚠️ کامنت کانال ارسال نشد | "
-        f"channel={channel_id}"
-    )
-
-    return result
-
+# =========================================================
+# REMEMBER POST
+# =========================================================
 
 def remember_post(
     user_id,
