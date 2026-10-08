@@ -47,7 +47,7 @@ def _touch_user(user):
 
 
 # =========================================================
-# LOAD CALLBACK MODULES
+# CALLBACK MODULES
 # =========================================================
 
 def _load_cb():
@@ -81,7 +81,7 @@ def _load_cb():
 
 
 # =========================================================
-# LOAD MESSAGE MODULES
+# MESSAGE MODULES
 # =========================================================
 
 def _load_msg():
@@ -134,10 +134,12 @@ async def _safe(
     handler,
     argument,
 ):
+
     if handler is None:
         return
 
     try:
+
         await handler(
             argument
         )
@@ -155,13 +157,10 @@ async def _safe(
 # =========================================================
 
 def _callback_modules(data):
+
     mods = _load_cb()
 
     data = data or ""
-
-    # -----------------------------------------------------
-    # IGNORE
-    # -----------------------------------------------------
 
     if data in (
         "ignore",
@@ -170,33 +169,23 @@ def _callback_modules(data):
 
         names = ()
 
-    # -----------------------------------------------------
-    # FORCE JOIN
-    # -----------------------------------------------------
-
     elif data == "check_force_join":
 
         names = (
             "admin_panel",
         )
 
-    # -----------------------------------------------------
-    # ADMIN / CHANNEL STATS
-    # -----------------------------------------------------
-
     elif (
         data.startswith("ad_")
-        or data.startswith("channel_stats_")
+        or data.startswith(
+            "channel_stats_"
+        )
     ):
 
         names = (
             "admin_complete",
             "admin_panel",
         )
-
-    # -----------------------------------------------------
-    # COMMENTS
-    # -----------------------------------------------------
 
     elif (
         data == "m_comment"
@@ -207,10 +196,6 @@ def _callback_modules(data):
             "comments",
         )
 
-    # -----------------------------------------------------
-    # STATS
-    # -----------------------------------------------------
-
     elif (
         data == "m_stats"
         or data.startswith("stats_")
@@ -220,24 +205,18 @@ def _callback_modules(data):
             "stats",
         )
 
-    # -----------------------------------------------------
-    # SHOP
-    # -----------------------------------------------------
-
     elif (
         data.startswith("plan_")
         or data.startswith("pay_")
         or data.startswith("adm_")
-        or data.startswith("gift_confirm_")
+        or data.startswith(
+            "gift_confirm_"
+        )
     ):
 
         names = (
             "shop",
         )
-
-    # -----------------------------------------------------
-    # CHANNEL SETTINGS
-    # -----------------------------------------------------
 
     elif (
         data == "csave"
@@ -265,10 +244,6 @@ def _callback_modules(data):
             "channel_settings",
         )
 
-    # -----------------------------------------------------
-    # CHANNEL SETTINGS
-    # -----------------------------------------------------
-
     elif (
         data.startswith("channel_")
         and not data.startswith(
@@ -280,10 +255,6 @@ def _callback_modules(data):
             "channel_settings",
         )
 
-    # -----------------------------------------------------
-    # FOOTER
-    # -----------------------------------------------------
-
     elif (
         data.startswith("link_")
         or data.startswith("footer_")
@@ -292,10 +263,6 @@ def _callback_modules(data):
         names = (
             "footer_text",
         )
-
-    # -----------------------------------------------------
-    # HOME
-    # -----------------------------------------------------
 
     elif (
         data.startswith("m_")
@@ -330,6 +297,7 @@ def _message_modules(
     user_id,
     text,
 ):
+
     mods = _load_msg()
 
     name = (
@@ -338,10 +306,6 @@ def _message_modules(
     ).get(
         "state"
     )
-
-    # -----------------------------------------------------
-    # ADMIN
-    # -----------------------------------------------------
 
     if name in (
         "admin_card",
@@ -365,10 +329,6 @@ def _message_modules(
             "admin_panel",
         )
 
-    # -----------------------------------------------------
-    # SHOP
-    # -----------------------------------------------------
-
     elif name in (
         "enter_license",
         "choose_pay",
@@ -383,20 +343,12 @@ def _message_modules(
             "shop",
         )
 
-    # -----------------------------------------------------
-    # ADD CHANNEL
-    # -----------------------------------------------------
-
     elif name == "add_channel":
 
         keys = (
             "add_channel",
             "navigation",
         )
-
-    # -----------------------------------------------------
-    # FOOTER
-    # -----------------------------------------------------
 
     elif name in (
         "footer_text",
@@ -409,10 +361,6 @@ def _message_modules(
             "navigation",
         )
 
-    # -----------------------------------------------------
-    # COMMENTS
-    # -----------------------------------------------------
-
     elif name in (
         "comment_text",
         "comment_edit",
@@ -423,10 +371,6 @@ def _message_modules(
             "navigation",
         )
 
-    # -----------------------------------------------------
-    # CHANNEL SETTINGS
-    # -----------------------------------------------------
-
     elif name in (
         "category_select",
         "quiet_custom",
@@ -436,10 +380,6 @@ def _message_modules(
             "channel_settings",
             "navigation",
         )
-
-    # -----------------------------------------------------
-    # NAVIGATION
-    # -----------------------------------------------------
 
     elif text in (
         "🏠 منوی اصلی",
@@ -473,10 +413,6 @@ def _message_modules(
         keys = (
             "help",
         )
-
-    # -----------------------------------------------------
-    # ADMIN TEXT
-    # -----------------------------------------------------
 
     elif text in (
         "📊 آمار کاربران",
@@ -639,22 +575,27 @@ async def on_message(
         "supergroup",
     ):
 
-        # -------------------------------------------------
-        # خیلی مهم:
-        #
-        # دیگر از پیام گروه برای ساخت کامنت استفاده
-        # نمی‌کنیم.
-        #
-        # بنابراین:
-        # - کاربر چیزی بنویسد -> کامنت ایجاد نمی‌شود
-        # - پیام Forward بیاید -> کامنت ایجاد نمی‌شود
-        # - فقط خود پست کانال trigger کامنت است
-        # -------------------------------------------------
+        try:
+
+            from handlers.comments import (
+                handle_discussion_message
+            )
+
+            handle_discussion_message(
+                message
+            )
+
+        except Exception as error:
+
+            print(
+                "❌ discussion handler error:",
+                error,
+            )
 
         return
 
     # =====================================================
-    # USER
+    # PRIVATE USER
     # =====================================================
 
     if message.from_user is None:
