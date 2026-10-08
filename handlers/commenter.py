@@ -144,31 +144,28 @@ def get_linked_chat(channel_id):
         )
     else:
         print(
-            f"⚠️ گروه دیدگاه برای {channel_id} "
-            f"پیدا نشد | {data.get('description')}"
+            f"⚠️ گروه دیدگاه برای کانال "
+            f"{channel_id} پیدا نشد | "
+            f"{data.get('description', '')}"
         )
 
     return linked
 
 
-def _send_to_group(
-    group_id,
-    text,
-    reply_to=None,
-    extra=None,
-):
+def _send_to_group(group_id, text):
+    """
+    ارسال کاملاً عادی به گروه دیدگاه.
+
+    مهم:
+    هیچ reply_to_message_id
+    و هیچ reply_parameters
+    ارسال نمی‌شود.
+    """
+
     payload = {
         "chat_id": group_id,
         "text": text,
     }
-
-    if reply_to:
-        payload[
-            "reply_to_message_id"
-        ] = int(reply_to)
-
-    if extra:
-        payload.update(extra)
 
     return _call(
         "sendMessage",
@@ -183,6 +180,13 @@ def post_comment(
     group_message_id=None,
     group_id=None,
 ):
+    """
+    ارسال کامنت ساده.
+
+    متن ارسالی دقیقاً همان متنی است که کاربر تنظیم کرده.
+    هیچ Reply یا متن اضافه‌ای استفاده نمی‌شود.
+    """
+
     text = (
         text or ""
     ).strip()
@@ -193,6 +197,8 @@ def post_comment(
             "description": "empty",
         }
 
+    # اگر گروه دیدگاه از قبل پیدا شده باشد
+    # همان را استفاده می‌کنیم.
     target_group = (
         group_id
         or get_linked_chat(channel_id)
@@ -204,43 +210,36 @@ def post_comment(
             "description": "no-linked-group",
         }
 
-    # مهم:
-    # اینجا باید ID همان پیام پست کانال
-    # که داخل گروه دیدگاه ایجاد شده استفاده شود.
-    if group_message_id:
-        result = _send_to_group(
-            target_group,
-            text,
-            group_message_id,
-        )
+    # فقط متن ساده ارسال می‌شود.
+    #
+    # عمداً این موارد استفاده نمی‌شوند:
+    # reply_to_message_id
+    # reply_parameters
+    # group_message_id
+    # reply_to
+    result = _send_to_group(
+        target_group,
+        text,
+    )
 
-        if result.get("ok"):
-            print(
-                f"💬 دیدگاه در گروه "
-                f"{target_group} نوشته شد"
-            )
-
-            return result
-
+    if result.get("ok"):
         print(
-            f"⚠️ ارسال کامنت روی پیام اصلی "
-            f"دیدگاه شکست خورد: "
-            f"{result.get('description', '')[:200]}"
+            f"✅ کامنت ساده کانال "
+            f"{channel_id} در گروه "
+            f"{target_group} ارسال شد."
         )
 
         return result
 
-    # دیگر از ID پست کانال به‌عنوان
-    # reply در گروه استفاده نمی‌کنیم.
     print(
-        f"⚠️ پیام اصلی دیدگاه برای کانال "
-        f"{channel_id} پیدا نشد."
+        f"⚠️ ارسال کامنت کانال "
+        f"{channel_id} ناموفق بود | "
+        f"گروه: {target_group} | "
+        f"خطا: "
+        f"{result.get('description', '')[:200]}"
     )
 
-    return {
-        "ok": False,
-        "description": "discussion-root-not-found",
-    }
+    return result
 
 
 def remember_post(
