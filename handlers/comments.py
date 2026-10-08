@@ -50,10 +50,7 @@ def _need_sub():
 
 def _is_comment_enabled(channel):
     """
-    کامنت روشن/خاموش را به شکل امن بررسی می‌کند.
-
-    هم bool واقعی را پشتیبانی می‌کند،
-    هم مقادیر قدیمی مثل "true" / "false".
+    بررسی امن وضعیت کامنت.
     """
 
     if not isinstance(channel, dict):
@@ -114,7 +111,7 @@ def find_channel(user, channel_id):
 
 def _normalize_channel_key(value):
     """
-    نرمال‌سازی شناسه کانال برای مقایسه.
+    نرمال‌سازی شناسه کانال.
     """
 
     value = str(
@@ -149,11 +146,13 @@ def _keys_of_chat(obj):
     )
 
     if username:
+
         username = str(
             username
         ).strip().lstrip("@")
 
         if username:
+
             keys.add(
                 "@" + username.lower()
             )
@@ -163,11 +162,13 @@ def _keys_of_chat(obj):
             )
 
     if chat_id is not None:
+
         chat_id = str(
             chat_id
         ).strip()
 
         if chat_id:
+
             keys.add(chat_id)
             keys.add(chat_id.lower())
 
@@ -186,6 +187,7 @@ def find_live_channel_by_keys(keys):
     normalized_keys = set()
 
     for key in keys:
+
         key = str(
             key or ""
         ).strip().lower()
@@ -196,10 +198,13 @@ def find_live_channel_by_keys(keys):
         normalized_keys.add(key)
 
         if key.startswith("@"):
+
             normalized_keys.add(
                 key[1:]
             )
+
         else:
+
             normalized_keys.add(
                 "@" + key
             )
@@ -253,6 +258,7 @@ def find_live_channel_by_keys(keys):
 # =========================================================
 
 def comment_text_view(channel):
+
     enabled = _is_comment_enabled(
         channel
     )
@@ -275,13 +281,13 @@ def comment_text_view(channel):
         "━━━━━━━━━━━━━━\n"
         f"وضعیت: {status}\n"
         f"متن: {text}\n\n"
-        "متن دقیقاً به‌صورت یک پیام عادی "
-        "داخل گروه دیدگاه ارسال می‌شود.\n"
-        "ربات باید امکان ارسال پیام در گروه دیدگاه را داشته باشد."
+        "کامنت برای هر پست فقط یک بار ارسال می‌شود.\n"
+        "کامنت به پست مربوطه در بخش دیدگاه‌ها متصل می‌شود."
     )
 
 
 def comment_menu(channel):
+
     enabled = _is_comment_enabled(
         channel
     )
@@ -348,6 +354,7 @@ async def show_comment_panel(
     user_id,
     channel_id,
 ):
+
     user = get_user(user_id) or {}
 
     channel = find_channel(
@@ -356,11 +363,13 @@ async def show_comment_panel(
     )
 
     if not channel:
+
         await edit_message(
             callback,
             "کانال پیدا نشد.",
             home_components(user_id),
         )
+
         return
 
     set_state(
@@ -384,19 +393,23 @@ def save_comment(
     text=None,
     enabled=None,
 ):
+
     payload = {}
 
     if text is not None:
+
         payload["comment_text"] = str(
             text
         ).strip()[:400]
 
     if enabled is not None:
+
         payload["comment_on"] = bool(
             enabled
         )
 
     if payload:
+
         success = _patch_channel(
             user_id,
             channel_id,
@@ -411,8 +424,6 @@ def save_comment(
             f"success={success}"
         )
 
-    # دوباره از DB می‌خوانیم تا مطمئن شویم
-    # وضعیت تازه نمایش داده می‌شود.
     fresh_user = get_user(
         user_id
     ) or {}
@@ -444,36 +455,42 @@ async def on_callback(callback: CallbackQuery):
         "channels"
     ) or []
 
-    # -----------------------------------------------------
+    # =====================================================
     # MAIN COMMENT MENU
-    # -----------------------------------------------------
+    # =====================================================
 
     if data == "m_comment":
 
         if not has_subscription(
             user_id
         ):
+
             await edit_message(
                 callback,
                 _need_sub(),
                 home_components(user_id),
             )
+
             return
 
         if not channels:
+
             await edit_message(
                 callback,
                 "📢 اول یک کانال ثبت کن.",
                 home_components(user_id),
             )
+
             return
 
         if len(channels) == 1:
+
             await show_comment_panel(
                 callback,
                 user_id,
                 channels[0]["id"],
             )
+
             return
 
         await edit_message(
@@ -487,9 +504,9 @@ async def on_callback(callback: CallbackQuery):
 
         return
 
-    # -----------------------------------------------------
+    # =====================================================
     # CHANNEL SELECT
-    # -----------------------------------------------------
+    # =====================================================
 
     if data.startswith("cmtch_"):
 
@@ -507,9 +524,9 @@ async def on_callback(callback: CallbackQuery):
 
         return
 
-    # -----------------------------------------------------
+    # =====================================================
     # TOGGLE
-    # -----------------------------------------------------
+    # =====================================================
 
     if data.startswith(
         "cmt_toggle_"
@@ -521,8 +538,6 @@ async def on_callback(callback: CallbackQuery):
             1,
         )
 
-        # همیشه کاربر را دوباره از DB می‌خوانیم
-        # تا مقدار قدیمی استفاده نشود.
         fresh_user = (
             get_user(user_id)
             or {}
@@ -534,11 +549,13 @@ async def on_callback(callback: CallbackQuery):
         )
 
         if not channel:
+
             print(
                 f"⚠️ toggle: channel not found | "
                 f"user={user_id} | "
                 f"channel={channel_id}"
             )
+
             return
 
         current_value = (
@@ -549,7 +566,6 @@ async def on_callback(callback: CallbackQuery):
 
         new_value = not current_value
 
-        # روشن کردن بدون متن مجاز نیست.
         if new_value:
 
             text = (
@@ -606,9 +622,9 @@ async def on_callback(callback: CallbackQuery):
 
         return
 
-    # -----------------------------------------------------
+    # =====================================================
     # CUSTOM TEXT
-    # -----------------------------------------------------
+    # =====================================================
 
     if data.startswith(
         "cmt_custom_"
@@ -643,9 +659,9 @@ async def on_callback(callback: CallbackQuery):
 
         return
 
-    # -----------------------------------------------------
+    # =====================================================
     # PRESETS
-    # -----------------------------------------------------
+    # =====================================================
 
     if data.startswith(
         "cmt_pre_"
@@ -675,10 +691,13 @@ async def on_callback(callback: CallbackQuery):
             )
 
         try:
+
             index = int(
                 index_s
             )
+
         except Exception:
+
             return
 
         if (
@@ -728,17 +747,16 @@ async def on_callback(callback: CallbackQuery):
 
 
 # =========================================================
-# DIRECT CHANNEL POST COMMENT
+# CHANNEL POST
 # =========================================================
 
 def handle_channel_post(message):
     """
-    وقتی ربات یک پست کانال را دریافت می‌کند،
-    مستقیماً گروه دیدگاه متصل را پیدا می‌کند
-    و کامنت را ارسال می‌کند.
+    فقط خود پست کانال trigger کامنت است.
 
-    دیگر به forward شدن پست داخل گروه
-    وابسته نیستیم.
+    پیام‌های گروه/کاربران هیچ نقشی ندارند.
+
+    برای هر post_id فقط یک بار کامنت ارسال می‌شود.
     """
 
     chat = getattr(
@@ -748,9 +766,11 @@ def handle_channel_post(message):
     )
 
     if not chat:
+
         print(
             "⚠️ channel post بدون chat دریافت شد."
         )
+
         return False
 
     chat_type = str(
@@ -765,9 +785,9 @@ def handle_channel_post(message):
     if chat_type != "channel":
         return False
 
-    # -----------------------------------------------------
+    # =====================================================
     # FIND CHANNEL
-    # -----------------------------------------------------
+    # =====================================================
 
     keys = _keys_of_chat(
         chat
@@ -803,9 +823,9 @@ def handle_channel_post(message):
         f"owner={owner_id}"
     )
 
-    # -----------------------------------------------------
-    # CHECK ON/OFF
-    # -----------------------------------------------------
+    # =====================================================
+    # CHECK ENABLED
+    # =====================================================
 
     if not _is_comment_enabled(
         channel
@@ -818,9 +838,9 @@ def handle_channel_post(message):
 
         return True
 
-    # -----------------------------------------------------
-    # CHECK TEXT
-    # -----------------------------------------------------
+    # =====================================================
+    # COMMENT TEXT
+    # =====================================================
 
     text = (
         channel.get(
@@ -838,9 +858,9 @@ def handle_channel_post(message):
 
         return True
 
-    # -----------------------------------------------------
-    # POST ID
-    # -----------------------------------------------------
+    # =====================================================
+    # CHANNEL POST ID
+    # =====================================================
 
     message_id = (
         getattr(
@@ -856,14 +876,17 @@ def handle_channel_post(message):
     )
 
     try:
+
         message_id = int(
             message_id
         )
+
     except Exception:
 
         print(
-            f"⚠️ شناسه پست کانال قابل تشخیص نیست | "
-            f"channel={channel_id}"
+            f"❌ شناسه پست کانال قابل تشخیص نیست | "
+            f"channel={channel_id} | "
+            f"value={message_id!r}"
         )
 
         return True
@@ -874,9 +897,9 @@ def handle_channel_post(message):
         f"post_id={message_id}"
     )
 
-    # -----------------------------------------------------
-    # DUPLICATE PROTECTION
-    # -----------------------------------------------------
+    # =====================================================
+    # ONE COMMENT PER POST
+    # =====================================================
 
     previous_id = channel.get(
         "last_commented_post_id"
@@ -891,19 +914,23 @@ def handle_channel_post(message):
         ):
 
             print(
-                f"ℹ️ کامنت این پست قبلاً ارسال شده | "
+                f"🛑 کامنت قبلاً برای این پست ارسال شده | "
                 f"channel={channel_id} | "
                 f"post_id={message_id}"
             )
 
             return True
 
-    except Exception:
-        pass
+    except Exception as error:
 
-    # -----------------------------------------------------
-    # FIND LINKED DISCUSSION GROUP
-    # -----------------------------------------------------
+        print(
+            f"⚠️ بررسی duplicate ناموفق بود | "
+            f"error={error}"
+        )
+
+    # =====================================================
+    # LINKED DISCUSSION
+    # =====================================================
 
     print(
         f"🔎 در حال پیدا کردن گروه دیدگاه | "
@@ -929,31 +956,39 @@ def handle_channel_post(message):
         f"group={group_id}"
     )
 
-    # -----------------------------------------------------
-    # SEND NORMAL MESSAGE
-    # -----------------------------------------------------
+    # =====================================================
+    # SEND COMMENT AS REPLY TO CHANNEL POST
+    # =====================================================
 
     print(
-        f"📤 ارسال کامنت | "
+        f"📤 ارسال کامنت Reply | "
         f"channel={channel_id} | "
         f"group={group_id} | "
+        f"reply_to={message_id} | "
         f"text={text!r}"
     )
 
     result = post_comment(
         channel_id,
         text,
+        reply_to=message_id,
         group_id=group_id,
     )
+
+    # =====================================================
+    # RESULT
+    # =====================================================
 
     if not isinstance(
         result,
         dict,
     ):
+
         print(
             f"❌ پاسخ نامعتبر از post_comment | "
             f"channel={channel_id}"
         )
+
         return True
 
     if result.get("ok"):
@@ -967,19 +1002,22 @@ def handle_channel_post(message):
         )
 
         print(
-            f"✅ کامنت ارسال شد | "
+            f"✅ کامنت Reply شد | "
             f"channel={channel_id} | "
             f"post_id={message_id} | "
             f"group={group_id} | "
+            f"reply_to={message_id} | "
             f"db_saved={saved}"
         )
 
     else:
 
         print(
-            f"❌ کامنت ارسال نشد | "
+            f"❌ کامنت Reply نشد | "
             f"channel={channel_id} | "
+            f"post_id={message_id} | "
             f"group={group_id} | "
+            f"reply_to={message_id} | "
             f"code={result.get('code')} | "
             f"description={result.get('description', '')}"
         )
@@ -993,13 +1031,10 @@ def handle_channel_post(message):
 
 def handle_discussion_message(message):
     """
-    عمداً هیچ کامنتی از پیام‌های گروه ایجاد نمی‌کنیم.
+    عمداً هیچ کاری انجام نمی‌دهد.
 
-    این تابع فقط برای سازگاری با کدهای قبلی
-    نگه داشته شده است.
-
-    بنابراین اگر کاربر داخل گروه چیزی بنویسد،
-    ربات به آن پاسخ کامنت نمی‌دهد.
+    پیام‌های کاربران در گروه Discussion
+    هرگز باعث ارسال کامنت توسط ربات نمی‌شوند.
     """
 
     chat = getattr(
@@ -1026,8 +1061,6 @@ def handle_discussion_message(message):
     ):
         return False
 
-    # مهم:
-    # هیچ ارسال کامنتی از پیام گروه انجام نمی‌شود.
     return False
 
 
@@ -1039,7 +1072,7 @@ async def handle_private_comment_text(
     message
 ):
     """
-    ذخیره متن دلخواه کامنت.
+    دریافت و ذخیره متن دلخواه کامنت.
     """
 
     if message.from_user is None:
@@ -1057,6 +1090,7 @@ async def handle_private_comment_text(
     if state.get(
         "state"
     ) != "comment_text":
+
         return False
 
     channel_id = (
@@ -1133,9 +1167,9 @@ async def on_message(message: Message):
         or ""
     ).lower()
 
-    # -----------------------------------------------------
+    # =====================================================
     # CHANNEL
-    # -----------------------------------------------------
+    # =====================================================
 
     if chat_type == "channel":
 
@@ -1145,26 +1179,25 @@ async def on_message(message: Message):
 
         return
 
-    # -----------------------------------------------------
+    # =====================================================
     # GROUP
-    # -----------------------------------------------------
+    # =====================================================
 
     if chat_type in (
         "group",
         "supergroup",
     ):
 
-        # هیچ پیام کاربر در گروه
-        # نباید کامنت تولید کند.
+        # هیچ پیام گروهی نباید trigger شود.
         return
 
-    # -----------------------------------------------------
+    # =====================================================
     # PRIVATE
-    # -----------------------------------------------------
+    # =====================================================
 
     if message.from_user is None:
         return
 
     await handle_private_comment_text(
         message
-    )
+        )
