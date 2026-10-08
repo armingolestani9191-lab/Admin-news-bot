@@ -1,4 +1,8 @@
-from bale import CallbackQuery, Message, InlineKeyboardMarkup
+from bale import (
+    CallbackQuery,
+    Message,
+    InlineKeyboardMarkup,
+)
 
 from client import bot
 from bans import is_banned
@@ -11,9 +15,14 @@ from users import add_user
 
 BAN_TEXT = "حساب شما توسط پشتیبانی بن شد."
 
+
 _CB = None
 _MSG = None
 
+
+# =========================================================
+# USER
+# =========================================================
 
 def _touch_user(user):
     if user is None:
@@ -22,17 +31,30 @@ def _touch_user(user):
     try:
         add_user(
             user.id,
-            getattr(user, "first_name", None),
-            getattr(user, "username", None),
+            getattr(
+                user,
+                "first_name",
+                None,
+            ),
+            getattr(
+                user,
+                "username",
+                None,
+            ),
         )
     except Exception:
         pass
 
 
+# =========================================================
+# LOAD CALLBACK MODULES
+# =========================================================
+
 def _load_cb():
     global _CB
 
     if _CB is None:
+
         from handlers import (
             admin_complete,
             admin_panel,
@@ -58,10 +80,15 @@ def _load_cb():
     return _CB
 
 
+# =========================================================
+# LOAD MESSAGE MODULES
+# =========================================================
+
 def _load_msg():
     global _MSG
 
     if _MSG is None:
+
         from handlers import (
             admin_complete,
             admin_panel,
@@ -99,34 +126,103 @@ def _load_msg():
     return _MSG
 
 
-async def _safe(handler, argument):
+# =========================================================
+# SAFE HANDLER
+# =========================================================
+
+async def _safe(
+    handler,
+    argument,
+):
     if handler is None:
         return
 
     try:
-        await handler(argument)
-    except Exception as error:
-        print("handler error:", error)
+        await handler(
+            argument
+        )
 
+    except Exception as error:
+
+        print(
+            "handler error:",
+            error,
+        )
+
+
+# =========================================================
+# CALLBACK ROUTER
+# =========================================================
 
 def _callback_modules(data):
     mods = _load_cb()
+
     data = data or ""
 
-    if data in ("ignore", "ad_ignore"):
+    # -----------------------------------------------------
+    # IGNORE
+    # -----------------------------------------------------
+
+    if data in (
+        "ignore",
+        "ad_ignore",
+    ):
+
         names = ()
 
+    # -----------------------------------------------------
+    # FORCE JOIN
+    # -----------------------------------------------------
+
     elif data == "check_force_join":
-        names = ("admin_panel",)
 
-    elif data.startswith("ad_") or data.startswith("channel_stats_"):
-        names = ("admin_complete", "admin_panel")
+        names = (
+            "admin_panel",
+        )
 
-    elif data == "m_comment" or data.startswith("cmt"):
-        names = ("comments",)
+    # -----------------------------------------------------
+    # ADMIN / CHANNEL STATS
+    # -----------------------------------------------------
 
-    elif data == "m_stats" or data.startswith("stats_"):
-        names = ("stats",)
+    elif (
+        data.startswith("ad_")
+        or data.startswith("channel_stats_")
+    ):
+
+        names = (
+            "admin_complete",
+            "admin_panel",
+        )
+
+    # -----------------------------------------------------
+    # COMMENTS
+    # -----------------------------------------------------
+
+    elif (
+        data == "m_comment"
+        or data.startswith("cmt")
+    ):
+
+        names = (
+            "comments",
+        )
+
+    # -----------------------------------------------------
+    # STATS
+    # -----------------------------------------------------
+
+    elif (
+        data == "m_stats"
+        or data.startswith("stats_")
+    ):
+
+        names = (
+            "stats",
+        )
+
+    # -----------------------------------------------------
+    # SHOP
+    # -----------------------------------------------------
 
     elif (
         data.startswith("plan_")
@@ -134,42 +230,85 @@ def _callback_modules(data):
         or data.startswith("adm_")
         or data.startswith("gift_confirm_")
     ):
-        names = ("shop",)
 
-    elif data == "csave" or data == "cat_save" or data.startswith((
-        "csel_",
-        "cat_",
-        "time_",
-        "stime_",
-        "img_",
-        "emoji_",
-        "delete_",
-        "yesdel_",
-        "nodel_",
-        "quiet_",
-        "q24_",
-        "qpre_",
-        "qcus_",
-    )):
-        names = ("channel_settings",)
+        names = (
+            "shop",
+        )
+
+    # -----------------------------------------------------
+    # CHANNEL SETTINGS
+    # -----------------------------------------------------
+
+    elif (
+        data == "csave"
+        or data == "cat_save"
+        or data.startswith(
+            (
+                "csel_",
+                "cat_",
+                "time_",
+                "stime_",
+                "img_",
+                "emoji_",
+                "delete_",
+                "yesdel_",
+                "nodel_",
+                "quiet_",
+                "q24_",
+                "qpre_",
+                "qcus_",
+            )
+        )
+    ):
+
+        names = (
+            "channel_settings",
+        )
+
+    # -----------------------------------------------------
+    # CHANNEL SETTINGS
+    # -----------------------------------------------------
 
     elif (
         data.startswith("channel_")
-        and not data.startswith("channel_stats_")
+        and not data.startswith(
+            "channel_stats_"
+        )
     ):
-        names = ("channel_settings",)
 
-    elif data.startswith("link_") or data.startswith("footer_"):
-        names = ("footer_text",)
+        names = (
+            "channel_settings",
+        )
+
+    # -----------------------------------------------------
+    # FOOTER
+    # -----------------------------------------------------
+
+    elif (
+        data.startswith("link_")
+        or data.startswith("footer_")
+    ):
+
+        names = (
+            "footer_text",
+        )
+
+    # -----------------------------------------------------
+    # HOME
+    # -----------------------------------------------------
 
     elif (
         data.startswith("m_")
         or data.startswith("pause_")
         or data.startswith("resume_")
     ):
-        names = ("home",)
+
+        names = (
+            "home",
+        )
 
     else:
+
         names = (
             "home",
             "channel_settings",
@@ -183,16 +322,36 @@ def _callback_modules(data):
     ]
 
 
-def _message_modules(user_id, text):
+# =========================================================
+# MESSAGE ROUTER
+# =========================================================
+
+def _message_modules(
+    user_id,
+    text,
+):
     mods = _load_msg()
-    name = (get_state(user_id) or {}).get("state")
+
+    name = (
+        get_state(user_id)
+        or {}
+    ).get(
+        "state"
+    )
+
+    # -----------------------------------------------------
+    # ADMIN
+    # -----------------------------------------------------
 
     if name in (
         "admin_card",
         "admin_user_find",
         "admin_user_msg",
     ):
-        keys = ("admin_complete",)
+
+        keys = (
+            "admin_complete",
+        )
 
     elif name in (
         "admin_bc",
@@ -201,7 +360,14 @@ def _message_modules(user_id, text):
         "admin_add",
         "admin_del",
     ):
-        keys = ("admin_panel",)
+
+        keys = (
+            "admin_panel",
+        )
+
+    # -----------------------------------------------------
+    # SHOP
+    # -----------------------------------------------------
 
     elif name in (
         "enter_license",
@@ -212,47 +378,105 @@ def _message_modules(user_id, text):
         "wait_receipt",
         "admin_msg",
     ):
-        keys = ("shop",)
+
+        keys = (
+            "shop",
+        )
+
+    # -----------------------------------------------------
+    # ADD CHANNEL
+    # -----------------------------------------------------
 
     elif name == "add_channel":
-        keys = ("add_channel", "navigation")
+
+        keys = (
+            "add_channel",
+            "navigation",
+        )
+
+    # -----------------------------------------------------
+    # FOOTER
+    # -----------------------------------------------------
 
     elif name in (
         "footer_text",
         "footer_confirm",
         "footer_manage",
     ):
-        keys = ("footer_text", "navigation")
+
+        keys = (
+            "footer_text",
+            "navigation",
+        )
+
+    # -----------------------------------------------------
+    # COMMENTS
+    # -----------------------------------------------------
 
     elif name in (
         "comment_text",
         "comment_edit",
     ):
-        keys = ("comments", "navigation")
+
+        keys = (
+            "comments",
+            "navigation",
+        )
+
+    # -----------------------------------------------------
+    # CHANNEL SETTINGS
+    # -----------------------------------------------------
 
     elif name in (
         "category_select",
         "quiet_custom",
     ):
-        keys = ("channel_settings", "navigation")
+
+        keys = (
+            "channel_settings",
+            "navigation",
+        )
+
+    # -----------------------------------------------------
+    # NAVIGATION
+    # -----------------------------------------------------
 
     elif text in (
         "🏠 منوی اصلی",
         "🔙 بازگشت",
     ):
-        keys = ("navigation",)
+
+        keys = (
+            "navigation",
+        )
 
     elif text == "📢 کانال‌های من":
-        keys = ("channel",)
+
+        keys = (
+            "channel",
+        )
 
     elif text == "👤 پروفایل":
-        keys = ("profile",)
+
+        keys = (
+            "profile",
+        )
 
     elif text == "📞 پشتیبانی":
-        keys = ("support",)
+
+        keys = (
+            "support",
+        )
 
     elif text == "📖 راهنما":
-        keys = ("help",)
+
+        keys = (
+            "help",
+        )
+
+    # -----------------------------------------------------
+    # ADMIN TEXT
+    # -----------------------------------------------------
 
     elif text in (
         "📊 آمار کاربران",
@@ -266,6 +490,7 @@ def _message_modules(user_id, text):
         "🔒 جوین اجباری",
         "🛠 پنل مدیریت",
     ):
+
         keys = (
             "admin_system",
             "admin_panel",
@@ -273,10 +498,16 @@ def _message_modules(user_id, text):
         )
 
     elif text == "/بکاپ":
-        keys = ("admin_system",)
+
+        keys = (
+            "admin_system",
+        )
 
     else:
-        keys = ("navigation",)
+
+        keys = (
+            "navigation",
+        )
 
     return [
         mods[key]
@@ -285,21 +516,39 @@ def _message_modules(user_id, text):
     ]
 
 
+# =========================================================
+# CALLBACK EVENT
+# =========================================================
+
 @bot.event
-async def on_callback(callback: CallbackQuery):
-    if not once(callback, "dispatch_cb"):
+async def on_callback(
+    callback: CallbackQuery
+):
+
+    if not once(
+        callback,
+        "dispatch_cb",
+    ):
         return
 
-    answer_callback(callback)
+    answer_callback(
+        callback
+    )
 
     user = callback.from_user
 
-    if user and is_banned(user.id) and not is_admin(user.id):
+    if (
+        user
+        and is_banned(user.id)
+        and not is_admin(user.id)
+    ):
+
         await edit_message(
             callback,
             BAN_TEXT,
             InlineKeyboardMarkup(),
         )
+
         return
 
     modules = _callback_modules(
@@ -310,96 +559,172 @@ async def on_callback(callback: CallbackQuery):
         return
 
     for module in modules:
+
         await _safe(
-            getattr(module, "on_callback", None),
+            getattr(
+                module,
+                "on_callback",
+                None,
+            ),
             callback,
         )
 
 
+# =========================================================
+# MESSAGE EVENT
+# =========================================================
+
 @bot.event
-async def on_message(message: Message):
-    if not once(message, "dispatch_msg"):
+async def on_message(
+    message: Message
+):
+
+    if not once(
+        message,
+        "dispatch_msg",
+    ):
         return
 
-    chat = getattr(message, "chat", None)
-
-    chat_type = str(
-        getattr(chat, "type", "") or ""
+    chat = getattr(
+        message,
+        "chat",
+        None,
     )
 
-    if chat_type == "channel":
-        try:
-            from handlers.comments import handle_channel_post
+    chat_type = str(
+        getattr(
+            chat,
+            "type",
+            "",
+        )
+        or ""
+    ).lower()
 
-            handled = handle_channel_post(message)
+    # =====================================================
+    # CHANNEL
+    # =====================================================
+
+    if chat_type == "channel":
+
+        try:
+
+            from handlers.comments import (
+                handle_channel_post
+            )
+
+            handled = (
+                handle_channel_post(
+                    message
+                )
+            )
 
             if handled:
                 return
 
         except Exception as error:
+
             print(
-                "comment channel handler error:",
+                "❌ comment channel handler error:",
                 error,
             )
 
         return
 
-    # فقط پیام اصلیِ خودکارِ پست کانال در گروه دیدگاه
-    # وارد منطق کامنت می‌شود.
-    #
-    # پیام‌های عادی کاربران در گروه دیدگاه توسط
-    # handle_discussion_message رد می‌شوند.
+    # =====================================================
+    # GROUP / SUPERGROUP
+    # =====================================================
+
     if chat_type in (
         "group",
         "supergroup",
     ):
-        try:
-            from handlers.comments import handle_discussion_message
 
-            handled = handle_discussion_message(message)
+        # -------------------------------------------------
+        # خیلی مهم:
+        #
+        # دیگر از پیام گروه برای ساخت کامنت استفاده
+        # نمی‌کنیم.
+        #
+        # بنابراین:
+        # - کاربر چیزی بنویسد -> کامنت ایجاد نمی‌شود
+        # - پیام Forward بیاید -> کامنت ایجاد نمی‌شود
+        # - فقط خود پست کانال trigger کامنت است
+        # -------------------------------------------------
 
-            if handled:
-                return
+        return
 
-        except Exception as error:
-            print(
-                "discussion comment handler error:",
-                error,
-            )
+    # =====================================================
+    # USER
+    # =====================================================
 
     if message.from_user is None:
         return
 
-    _touch_user(message.from_user)
+    _touch_user(
+        message.from_user
+    )
 
-    user_id = message.from_user.id
+    user_id = (
+        message.from_user.id
+    )
 
-    if is_banned(user_id) and not is_admin(user_id):
-        await message.reply(BAN_TEXT)
+    # =====================================================
+    # BAN
+    # =====================================================
+
+    if (
+        is_banned(user_id)
+        and not is_admin(user_id)
+    ):
+
+        await message.reply(
+            BAN_TEXT
+        )
+
         return
 
-    text = (message.content or "").strip()
+    # =====================================================
+    # TEXT
+    # =====================================================
 
-    if text == "/start" or text.startswith("/start "):
-        from handlers.home import handle_start
+    text = (
+        message.content or ""
+    ).strip()
+
+    # =====================================================
+    # START
+    # =====================================================
+
+    if (
+        text == "/start"
+        or text.startswith("/start ")
+    ):
+
+        from handlers.home import (
+            handle_start
+        )
 
         await _safe(
             handle_start,
             message,
         )
+
         return
 
-    if chat_type in (
-        "group",
-        "supergroup",
-    ):
-        pass
+    # =====================================================
+    # NORMAL PRIVATE HANDLERS
+    # =====================================================
 
     for module in _message_modules(
         user_id,
         text,
     ):
+
         await _safe(
-            getattr(module, "on_message", None),
+            getattr(
+                module,
+                "on_message",
+                None,
+            ),
             message,
-    )
+        )
